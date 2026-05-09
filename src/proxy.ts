@@ -7,7 +7,7 @@ const protectedRoutes = ["/dashboard"];
 // Rutas accesibles solo para usuarios NO autenticados
 const authRoutes = ["/login", "/register"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Leer cookie de sesión de Firebase (se establece desde el cliente)
