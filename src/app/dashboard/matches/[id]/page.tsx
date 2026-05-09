@@ -1,18 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   ArrowLeft,
   BarChart3,
   TrendingUp,
-  TrendingDown,
   Play,
   Loader2,
   AlertCircle,
@@ -26,6 +24,7 @@ import {
   Video,
   FileText,
   Star,
+  Youtube,
 } from "lucide-react";
 import { getMatchById, getMatchAnalysis, updateMatchStatus } from "@/lib/firestore";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -46,12 +45,20 @@ function getStatusInfo(status: MatchStatus) {
   }
 }
 
-function formatShotType(type: string): string {
-  const map: Record<string, string> = {
-    smash: "Smash", volea: "Volea", bandeja: "Bandeja", vibora: "Víbora",
-    globo: "Globo", drop: "Drop shot", drive: "Drive", "revés": "Revés",
-  };
-  return map[type] || type;
+// Extraer YouTube ID de una URL
+function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=)([\w-]+)/,
+    /(?:youtube\.com\/embed\/)([\w-]+)/,
+    /(?:youtu\.be\/)([\w-]+)/,
+    /(?:youtube\.com\/shorts\/)([\w-]+)/,
+  ];
+  for (const p of patterns) {
+    const match = url.match(p);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 // ─── Componente: Barra de comparación ──────────────────────────────────
@@ -113,17 +120,12 @@ function StatCard({ icon: Icon, label, value, sub, color = "text-primary" }: {
 function MiniCourt({ heatmap }: { heatmap: MatchAnalysis["shotHeatmap"] }) {
   return (
     <svg viewBox="0 0 100 100" className="w-full h-auto max-h-72">
-      {/* Fondo de cancha */}
       <rect x="5" y="5" width="90" height="90" rx="2" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-muted-foreground/30" />
-      {/* Red */}
       <line x1="5" y1="50" x2="95" y2="50" stroke="currentColor" strokeWidth="0.8" className="text-primary/50" />
-      {/* Líneas de saque */}
       <line x1="5" y1="35" x2="95" y2="35" stroke="currentColor" strokeWidth="0.3" className="text-muted-foreground/20" />
       <line x1="5" y1="65" x2="95" y2="65" stroke="currentColor" strokeWidth="0.3" className="text-muted-foreground/20" />
-      {/* Centro */}
       <line x1="50" y1="5" x2="50" y2="95" stroke="currentColor" strokeWidth="0.3" className="text-muted-foreground/20" />
 
-      {/* Heatmap points */}
       {heatmap.map((point, i) => {
         const maxCount = Math.max(...heatmap.map((p) => p.count));
         const intensity = point.count / maxCount;
@@ -168,7 +170,6 @@ function PlayerCard({ player, isWinner }: { player: MatchAnalysis["playerStats"]
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Efectividad general */}
         <div className="flex items-center gap-2">
           <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
             <div className="h-full bg-primary rounded-full" style={{ width: `${effectiveness}%` }} />
@@ -176,7 +177,6 @@ function PlayerCard({ player, isWinner }: { player: MatchAnalysis["playerStats"]
           <span className="text-xs font-medium">{effectiveness}%</span>
         </div>
 
-        {/* Stats grid */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Winners</span>
@@ -216,6 +216,59 @@ function PlayerCard({ player, isWinner }: { player: MatchAnalysis["playerStats"]
   );
 }
 
+// ─── Componente: Video Player ──────────────────────────────────────────
+function VideoPlayer({ videoUrl }: { videoUrl: string }) {
+  const ytId = extractYouTubeId(videoUrl);
+
+  if (ytId) {
+    return (
+      <Card className="bg-card border-primary/10 overflow-hidden">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Youtube className="h-5 w-5 text-red-500" />
+            Video del partido
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="aspect-video w-full rounded-lg overflow-hidden bg-black">
+            <iframe
+              src={`https://www.youtube.com/embed/${ytId}?rel=0&modestbranding=1`}
+              title="Video del partido"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full border-0"
+            />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Para URLs de Firebase Storage u otros videos directos
+  return (
+    <Card className="bg-card border-primary/10 overflow-hidden">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Video className="h-5 w-5 text-primary" />
+          Video del partido
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="aspect-video w-full rounded-lg overflow-hidden bg-black">
+          <video
+            src={videoUrl}
+            controls
+            className="w-full h-full"
+            preload="metadata"
+          >
+            Tu navegador no soporta el elemento de video.
+          </video>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Página principal ──────────────────────────────────────────────────
 export default function MatchAnalysisPage() {
   const params = useParams();
@@ -227,27 +280,28 @@ export default function MatchAnalysisPage() {
   const [analysis, setAnalysis] = useState<MatchAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const autoTriggered = useRef(false);
 
   const loadData = useCallback(async () => {
-    if (!matchId || !isFirebaseConfigured) {
+    if (!matchId) {
       setLoading(false);
       return;
     }
 
     try {
-      const matchData = await getMatchById(matchId);
-      if (matchData) {
-        setMatch(matchData);
+      if (isFirebaseConfigured) {
+        const matchData = await getMatchById(matchId);
+        if (matchData) {
+          setMatch(matchData);
 
-        if (matchData.status === "analyzed") {
-          const analysisData = await getMatchAnalysis(matchId);
-          if (analysisData) {
-            setAnalysis(analysisData);
-          } else {
-            // Si el partido está analizado pero no hay análisis en Firestore,
-            // generar uno local (fallback)
-            const localAnalysis = generatePadelAnalysis(matchId);
-            setAnalysis(localAnalysis);
+          if (matchData.status === "analyzed") {
+            const analysisData = await getMatchAnalysis(matchId);
+            if (analysisData) {
+              setAnalysis(analysisData);
+            } else {
+              const localAnalysis = generatePadelAnalysis(matchId);
+              setAnalysis(localAnalysis);
+            }
           }
         }
       }
@@ -262,18 +316,32 @@ export default function MatchAnalysisPage() {
     loadData();
   }, [loadData]);
 
+  // Auto-trigger analysis when match status is "uploaded"
+  useEffect(() => {
+    if (match?.status === "uploaded" && !autoTriggered.current && !processing) {
+      autoTriggered.current = true;
+      triggerAnalysis();
+    }
+  }, [match?.status, processing]);
+
   // Polling cuando está en procesamiento
   useEffect(() => {
     if (match?.status !== "processing") return;
 
     const interval = setInterval(async () => {
-      const matchData = await getMatchById(matchId);
-      if (matchData) {
-        setMatch(matchData);
-        if (matchData.status === "analyzed") {
-          const analysisData = await getMatchAnalysis(matchId);
-          setAnalysis(analysisData || generatePadelAnalysis(matchId));
+      try {
+        if (isFirebaseConfigured) {
+          const matchData = await getMatchById(matchId);
+          if (matchData) {
+            setMatch(matchData);
+            if (matchData.status === "analyzed") {
+              const analysisData = await getMatchAnalysis(matchId);
+              setAnalysis(analysisData || generatePadelAnalysis(matchId));
+            }
+          }
         }
+      } catch {
+        // Silenciar errores de polling
       }
     }, 3000);
 
@@ -285,7 +353,7 @@ export default function MatchAnalysisPage() {
     setProcessing(true);
 
     try {
-      // Llamar a la API de análisis
+      // Intentar vía API primero
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -295,24 +363,32 @@ export default function MatchAnalysisPage() {
       const data = await response.json();
 
       if (data.success) {
-        // Recargar datos
         await loadData();
       } else {
-        console.error("Error en análisis:", data.error);
-        // Fallback: generar análisis localmente
+        throw new Error(data.error || "Error en API");
+      }
+    } catch (error) {
+      console.warn("API falló, generando análisis local:", error);
+
+      // Fallback: generar análisis localmente
+      try {
         const localAnalysis = generatePadelAnalysis(matchId);
         setAnalysis(localAnalysis);
+
+        // Intentar actualizar el estado en Firestore
+        if (isFirebaseConfigured) {
+          try {
+            await updateMatchStatus(matchId, "analyzed");
+          } catch {
+            console.warn("No se pudo actualizar estado en Firestore");
+          }
+        }
+
         if (match) {
           setMatch({ ...match, status: "analyzed" });
         }
-      }
-    } catch (error) {
-      console.error("Error disparando análisis:", error);
-      // Fallback local
-      const localAnalysis = generatePadelAnalysis(matchId);
-      setAnalysis(localAnalysis);
-      if (match) {
-        setMatch({ ...match, status: "analyzed" });
+      } catch (innerError) {
+        console.error("Error generando análisis local:", innerError);
       }
     } finally {
       setProcessing(false);
@@ -360,6 +436,13 @@ export default function MatchAnalysisPage() {
         </header>
 
         <main className="flex-1 container mx-auto px-4 py-8 flex flex-col items-center justify-center gap-6">
+          {/* Mostrar video incluso mientras procesa */}
+          {match.videoUrl && (
+            <div className="w-full max-w-3xl">
+              <VideoPlayer videoUrl={match.videoUrl} />
+            </div>
+          )}
+
           <div className={`flex h-20 w-20 items-center justify-center rounded-full ${statusInfo.bg}`}>
             {match.status === "processing" ? (
               <Loader2 className={`h-10 w-10 animate-spin ${statusInfo.color}`} />
@@ -375,22 +458,6 @@ export default function MatchAnalysisPage() {
             </p>
           </div>
 
-          {match.status === "uploaded" && (
-            <Button size="lg" onClick={triggerAnalysis} disabled={processing} className="gap-2">
-              {processing ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Iniciando análisis...
-                </>
-              ) : (
-                <>
-                  <Zap className="h-5 w-5" />
-                  Analizar con IA
-                </>
-              )}
-            </Button>
-          )}
-
           {match.status === "processing" && (
             <div className="text-center space-y-3">
               <div className="w-64 h-2 bg-muted rounded-full overflow-hidden">
@@ -405,10 +472,20 @@ export default function MatchAnalysisPage() {
           {match.status === "error" && (
             <div className="space-y-3 text-center">
               <p className="text-sm text-destructive">
-                Hubo un error al analizar el video.
+                Hubo un error al analizar el video. Podés reintentar.
               </p>
               <Button onClick={triggerAnalysis} disabled={processing}>
-                Reintentar análisis
+                {processing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Reintentando...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="mr-2 h-4 w-4" />
+                    Reintentar análisis
+                  </>
+                )}
               </Button>
             </div>
           )}
@@ -418,10 +495,12 @@ export default function MatchAnalysisPage() {
   }
 
   // ─── Render: Análisis completo ──────────────────────────────────
+  // FIX: declarar winnerTeam ANTES de usarlo
+  const winnerTeam = analysis.result.winner;
+  const smashRate = analysis.teamStats[winnerTeam - 1].smashWinRate + "%";
+  const pointsLabel = analysis.result.totalPoints + " puntos";
+
   const { result, teamStats, playerStats, shotHeatmap, possessionBySet, clips, aiSummary, keyMetrics } = analysis;
-  const smashRate = teamStats[winnerTeam - 1].smashWinRate + "%";
-  const pointsLabel = result.totalPoints + " puntos";
-  const winnerTeam = result.winner;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -455,6 +534,11 @@ export default function MatchAnalysisPage() {
             </span>
           </div>
         </div>
+
+        {/* Video del partido */}
+        {match.videoUrl && (
+          <VideoPlayer videoUrl={match.videoUrl} />
+        )}
 
         {/* Scoreboard */}
         <Card className="bg-card border-primary/20">
@@ -559,7 +643,7 @@ export default function MatchAnalysisPage() {
           </CardContent>
         </Card>
 
-        {/* Heatmap de tiros */}
+        {/* Heatmap de tiros + Clips */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="bg-card">
             <CardHeader>

@@ -87,41 +87,6 @@ function getStatusBadge(status: MatchStatus) {
   }
 }
 
-/**
- * Ejecuta el analisis completo del partido directamente desde el cliente.
- * El usuario esta autenticado, asi que Firestore permite las escrituras.
- */
-async function runAnalysis(matchId: string) {
-  console.log("[Analisis] Iniciando para match:", matchId);
-
-  try {
-    // 1. Marcar como processing
-    await updateMatchStatus(matchId, "processing");
-    console.log("[Analisis] Estado -> processing");
-
-    // 2. Simular tiempo de procesamiento IA
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    // 3. Generar analisis
-    const analysis = generatePadelAnalysis(matchId);
-    console.log("[Analisis] Datos generados, guardando...");
-
-    // 4. Guardar en Firestore
-    await saveMatchAnalysis(matchId, analysis);
-    console.log("[Analisis] Guardado. Estado -> analyzed");
-
-    return true;
-  } catch (error) {
-    console.error("[Analisis] Error:", error);
-    try {
-      await updateMatchStatus(matchId, "error", error instanceof Error ? error.message : "Error desconocido");
-    } catch {
-      // Si esto tambien falla, no podemos hacer mucho mas
-    }
-    return false;
-  }
-}
-
 // ─── Componente principal ─────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, userProfile, signOut } = useAuth();
@@ -144,7 +109,7 @@ export default function DashboardPage() {
 
   // Cargar partidos reales del usuario
   useEffect(() => {
-    if (user?.uid && isFirebaseConfigured) {
+    if (user?.uid) {
       loadMatches();
     }
   }, [user?.uid]);
@@ -156,8 +121,10 @@ export default function DashboardPage() {
 
     const interval = setInterval(async () => {
       try {
-        const userMatches = await getUserMatches(user.uid);
-        setMatches(userMatches);
+        if (isFirebaseConfigured) {
+          const userMatches = await getUserMatches(user.uid);
+          setMatches(userMatches);
+        }
       } catch {
         // Silenciar errores de polling
       }
@@ -170,8 +137,10 @@ export default function DashboardPage() {
     if (!user?.uid) return;
     setLoadingMatches(true);
     try {
-      const userMatches = await getUserMatches(user.uid);
-      setMatches(userMatches);
+      if (isFirebaseConfigured) {
+        const userMatches = await getUserMatches(user.uid);
+        setMatches(userMatches);
+      }
     } catch (error) {
       console.error("Error cargando partidos:", error);
     } finally {
@@ -237,25 +206,112 @@ export default function DashboardPage() {
   };
 
   /**
-   * Crea el partido y ejecuta el analisis en segundo plano.
-   * SEPARADO del estado "uploading" para que el boton no se quede trabado.
+   * Ejecuta el analisis completo del partido.
+   * Funciona tanto con Firestore como sin el (fallback local).
+   */
+  const runAnalysis = async (matchId: string): Promise<boolean> => {
+    console.log("[Analisis] Iniciando para match:", matchId);
+
+    try {
+      // 1. Marcar como processing en Firestore (si esta disponible)
+      if (isFirebaseConfigured) {
+        try {
+          await updateMatchStatus(matchId, "processing");
+        } catch (err) {
+          console.warn("[Analisis] No se pudo actualizar estado en Firestore:", err);
+        }
+      }
+      console.log("[Analisis] Estado -> processing");
+
+      // 2. Simular tiempo de procesamiento IA
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // 3. Generar analisis
+      const analysis = generatePadelAnalysis(matchId);
+      console.log("[Analisis] Datos generados, guardando...");
+
+      // 4. Intentar guardar en Firestore
+      if (isFirebaseConfigured) {
+        try {
+          await saveMatchAnalysis(matchId, analysis);
+          console.log("[Analisis] Guardado en Firestore. Estado -> analyzed");
+        } catch (err) {
+          console.warn("[Analisis] No se pudo guardar en Firestore, usando estado local:", err);
+        }
+      } else {
+        console.log("[Analisis] Firebase no configurado, analisis generado localmente");
+      }
+
+      return true;
+    } catch (error) {
+      console.error("[Analisis] Error:", error);
+      if (isFirebaseConfigured) {
+        try {
+          await updateMatchStatus(matchId, "error", error instanceof Error ? error.message : "Error desconocido");
+        } catch {
+          // Si esto tambien falla, no podemos hacer mucho mas
+        }
+      }
+      return false;
+    }
+  };
+
+  /**
+   * Crea el partido y ejecuta el analisis.
+   * Si Firestore no esta disponible, genera un ID local y funciona de todas formas.
    */
   const createAndAnalyze = async (title: string, videoUrl: string) => {
     if (!user?.uid) return;
 
-    // 1. Crear el partido en Firestore
-    const matchId = await createMatchDocument(user.uid, title, "padel", videoUrl);
+    let matchId: string;
 
-    // 2. Actualizar la lista inmediatamente
-    await loadMatches();
+    try {
+      // 1. Crear el partido en Firestore
+      if (isFirebaseConfigured) {
+        matchId = await createMatchDocument(user.uid, title, "padel", videoUrl);
+        console.log("[Dashboard] Partido creado en Firestore:", matchId);
+      } else {
+        // Fallback: generar ID local
+        matchId = "local-" + Date.now();
+        console.log("[Dashboard] Firebase no configurado, ID local:", matchId);
+      }
+    } catch (error) {
+      console.error("[Dashboard] Error creando partido en Firestore:", error);
+      // Fallback: generar ID local
+      matchId = "local-" + Date.now();
+      console.log("[Dashboard] Fallback a ID local:", matchId);
+    }
 
-    // 3. Ejecutar analisis en segundo plano (no bloquea la UI)
+    // 2. Agregar a la lista local inmediatamente como "processing"
+    const newMatch: Match = {
+      id: matchId,
+      userId: user.uid,
+      title,
+      sport: "padel",
+      videoUrl,
+      status: "processing",
+      createdAt: new Date() as unknown as Match["createdAt"],
+    };
+    setMatches((prev) => [newMatch, ...prev]);
+
+    // 3. Ejecutar analisis en segundo plano
     setAnalyzingMatchId(matchId);
     const success = await runAnalysis(matchId);
     setAnalyzingMatchId(null);
 
-    // 4. Recargar para ver el estado actualizado
-    await loadMatches();
+    // 4. Actualizar estado local
+    setMatches((prev) =>
+      prev.map((m) =>
+        m.id === matchId
+          ? { ...m, status: success ? "analyzed" : "error" }
+          : m
+      )
+    );
+
+    // 5. Recargar desde Firestore para tener datos actualizados
+    if (isFirebaseConfigured) {
+      await loadMatches();
+    }
 
     if (success) {
       toast({
@@ -284,13 +340,6 @@ export default function DashboardPage() {
       return;
     }
 
-    if (!isFirebaseConfigured) {
-      const msg = "Firebase no esta configurado. Configura las variables de entorno.";
-      setYoutubeError(msg);
-      toast({ title: "Firebase no configurado", description: msg, variant: "destructive" });
-      return;
-    }
-
     if (!isValidYouTubeUrl(youtubeUrl)) {
       const msg = "La URL no parece ser de YouTube. Usa un enlace como youtube.com/watch?v=...";
       setYoutubeError(msg);
@@ -309,13 +358,14 @@ export default function DashboardPage() {
       });
 
       // Resetear formulario ANTES del analisis para que no se trabe
+      const urlToUse = youtubeUrl.trim();
       setYoutubeUrl("");
       setMatchTitle("");
       setYoutubeError(null);
       setUploading(false);
 
-      // Crear partido + ejecutar analisis (no bloquea la UI)
-      await createAndAnalyze(title, youtubeUrl.trim());
+      // Crear partido + ejecutar analisis
+      await createAndAnalyze(title, urlToUse);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Error desconocido.";
       setYoutubeError(message);
@@ -380,7 +430,7 @@ export default function DashboardPage() {
         fileInputRef.current.value = "";
       }
 
-      // Crear partido + ejecutar analisis (no bloquea la UI)
+      // Crear partido + ejecutar analisis
       await createAndAnalyze(title, downloadUrl);
     } catch (error: unknown) {
       console.error("Error en upload:", error);
