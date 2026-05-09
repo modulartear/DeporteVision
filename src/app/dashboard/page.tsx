@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +12,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +32,6 @@ import {
   MoreVertical,
   LogOut,
   User,
-  Video,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -42,68 +41,13 @@ import {
   CloudUpload,
   Link as LinkIcon,
   Youtube,
+  Zap,
 } from "lucide-react";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { storage, isFirebaseConfigured } from "@/lib/firebase";
 import { createMatchDocument, getUserMatches } from "@/lib/firestore";
 import { useToast } from "@/hooks/use-toast";
 import type { Match, MatchStatus } from "@/types";
-
-// ─── Datos placeholder para cuando no hay partidos reales ─────────
-const placeholderMatches = [
-  {
-    id: "demo-1",
-    title: "Partido vs Juan & Marcos",
-    sport: "padel" as const,
-    status: "analyzed" as MatchStatus,
-    createdAt: null as unknown as Match["createdAt"],
-  },
-  {
-    id: "demo-2",
-    title: "Partido vs Equipo Rojo",
-    sport: "padel" as const,
-    status: "processing" as MatchStatus,
-    createdAt: null as unknown as Match["createdAt"],
-  },
-  {
-    id: "demo-3",
-    title: "Partido vs Luis & Pedro",
-    sport: "padel" as const,
-    status: "uploaded" as MatchStatus,
-    createdAt: null as unknown as Match["createdAt"],
-  },
-];
-
-const placeholderStats = [
-  {
-    label: "Partidos totales",
-    value: "12",
-    icon: Activity,
-    description: "+3 este mes",
-    trend: "up" as const,
-  },
-  {
-    label: "Analizados",
-    value: "8",
-    icon: BarChart3,
-    description: "66% completados",
-    trend: "up" as const,
-  },
-  {
-    label: "En proceso",
-    value: "2",
-    icon: Loader2,
-    description: "Procesando ahora",
-    trend: "neutral" as const,
-  },
-  {
-    label: "Win rate",
-    value: "67%",
-    icon: TrendingUp,
-    description: "+5% vs mes anterior",
-    trend: "up" as const,
-  },
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 function getStatusBadge(status: MatchStatus) {
@@ -117,14 +61,14 @@ function getStatusBadge(status: MatchStatus) {
       );
     case "processing":
       return (
-        <Badge variant="secondary" className="gap-1 bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+        <Badge variant="secondary" className="gap-1 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/10 border-yellow-500/20">
           <Loader2 className="h-3 w-3 animate-spin" />
           Procesando
         </Badge>
       );
     case "analyzed":
       return (
-        <Badge variant="secondary" className="gap-1 bg-green-100 text-green-800 hover:bg-green-100">
+        <Badge variant="secondary" className="gap-1 bg-green-500/10 text-green-400 hover:bg-green-500/10 border-green-500/20">
           <CheckCircle2 className="h-3 w-3" />
           Analizado
         </Badge>
@@ -139,10 +83,28 @@ function getStatusBadge(status: MatchStatus) {
   }
 }
 
+/**
+ * Dispara el análisis de un partido vía API.
+ * No espera el resultado — el análisis corre en el servidor.
+ */
+async function triggerAnalysis(matchId: string) {
+  try {
+    await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId }),
+    });
+    console.log("[Dashboard] Análisis disparado para:", matchId);
+  } catch (error) {
+    console.error("[Dashboard] Error disparando análisis:", error);
+  }
+}
+
 // ─── Componente principal ─────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, userProfile, signOut } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [uploading, setUploading] = useState(false);
@@ -155,6 +117,7 @@ export default function DashboardPage() {
   // YouTube URL state
   const [uploadMode, setUploadMode] = useState<"file" | "youtube">("file");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [youtubeError, setYoutubeError] = useState<string | null>(null);
 
   // Cargar partidos reales del usuario
   useEffect(() => {
@@ -162,6 +125,23 @@ export default function DashboardPage() {
       loadMatches();
     }
   }, [user?.uid]);
+
+  // Polling: actualizar partidos cada 5s si hay alguno en "processing"
+  useEffect(() => {
+    const hasProcessing = matches.some((m) => m.status === "processing");
+    if (!hasProcessing || !user?.uid) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const userMatches = await getUserMatches(user.uid);
+        setMatches(userMatches);
+      } catch {
+        // Silenciar errores de polling
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [matches, user?.uid]);
 
   const loadMatches = async () => {
     if (!user?.uid) return;
@@ -180,7 +160,6 @@ export default function DashboardPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validar tipo de archivo
     if (!file.type.startsWith("video/")) {
       toast({
         title: "Archivo inválido",
@@ -190,7 +169,6 @@ export default function DashboardPage() {
       return;
     }
 
-    // Validar tamaño (máximo 500MB)
     if (file.size > 500 * 1024 * 1024) {
       toast({
         title: "Archivo muy grande",
@@ -201,14 +179,13 @@ export default function DashboardPage() {
     }
 
     setSelectedFile(file);
-    // Auto-generar título si está vacío
     if (!matchTitle) {
       const now = new Date();
       setMatchTitle(`Partido ${now.toLocaleDateString("es-AR")}`);
     }
   };
 
-  // Validar URL de YouTube — acepta formatos amplios (con/sin https, www, m.)
+  // Validar URL de YouTube — acepta formatos amplios
   const isValidYouTubeUrl = useCallback((url: string): boolean => {
     const trimmed = url.trim();
     if (!trimmed) return false;
@@ -236,9 +213,6 @@ export default function DashboardPage() {
     return null;
   };
 
-  // Estado para error inline en YouTube tab
-  const [youtubeError, setYoutubeError] = useState<string | null>(null);
-
   const handleYouTubeSubmit = async () => {
     setYoutubeError(null);
 
@@ -255,22 +229,14 @@ export default function DashboardPage() {
     if (!isFirebaseConfigured) {
       const msg = "Firebase no está configurado. Configurá las variables de entorno para habilitar esta función.";
       setYoutubeError(msg);
-      toast({
-        title: "Firebase no configurado",
-        description: msg,
-        variant: "destructive",
-      });
+      toast({ title: "Firebase no configurado", description: msg, variant: "destructive" });
       return;
     }
 
     if (!isValidYouTubeUrl(youtubeUrl)) {
       const msg = "La URL no parece ser de YouTube. Usá un enlace como youtube.com/watch?v=... o youtu.be/...";
       setYoutubeError(msg);
-      toast({
-        title: "URL inválida",
-        description: msg,
-        variant: "destructive",
-      });
+      toast({ title: "URL inválida", description: msg, variant: "destructive" });
       return;
     }
 
@@ -278,13 +244,11 @@ export default function DashboardPage() {
 
     try {
       const title = matchTitle || `Partido ${new Date().toLocaleDateString("es-AR")}`;
-      console.log("[YouTube] Creando partido para usuario:", user.uid, "con URL:", youtubeUrl.trim());
       const matchId = await createMatchDocument(user.uid, title, "padel", youtubeUrl.trim());
-      console.log("[YouTube] Partido creado con ID:", matchId);
 
       toast({
-        title: "✅ Video de YouTube agregado",
-        description: `"${title}" se agregó correctamente y está listo para procesar.`,
+        title: "Video de YouTube agregado",
+        description: `"${title}" se agregó y el análisis con IA comenzó automáticamente.`,
       });
 
       // Resetear estado
@@ -292,17 +256,13 @@ export default function DashboardPage() {
       setMatchTitle("");
       setYoutubeError(null);
 
-      // Recargar partidos
+      // Recargar partidos y disparar análisis
       await loadMatches();
+      triggerAnalysis(matchId);
     } catch (error: unknown) {
-      console.error("[YouTube] Error al crear partido:", error);
       const message = error instanceof Error ? error.message : "Error desconocido al guardar el partido.";
       setYoutubeError(message);
-      toast({
-        title: "Error al agregar el video",
-        description: message,
-        variant: "destructive",
-      });
+      toast({ title: "Error al agregar el video", description: message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -324,21 +284,17 @@ export default function DashboardPage() {
     setUploadProgress(0);
 
     try {
-      // Crear referencia en Firebase Storage
       const timestamp = Date.now();
       const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const storageRef = ref(storage, `videos/${user.uid}/${timestamp}_${sanitizedName}`);
 
-      // Subir con progreso
       const uploadTask = uploadBytesResumable(storageRef, selectedFile);
 
       const downloadUrl = await new Promise<string>((resolve, reject) => {
         uploadTask.on(
           "state_changed",
           (snapshot) => {
-            const progress = Math.round(
-              (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            );
+            const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
             setUploadProgress(progress);
           },
           (error) => {
@@ -354,11 +310,11 @@ export default function DashboardPage() {
 
       // Crear documento del partido en Firestore
       const title = matchTitle || `Partido ${new Date().toLocaleDateString("es-AR")}`;
-      await createMatchDocument(user.uid, title, "padel", downloadUrl);
+      const matchId = await createMatchDocument(user.uid, title, "padel", downloadUrl);
 
       toast({
         title: "Video subido correctamente",
-        description: `"${title}" se subió y está listo para procesar.`,
+        description: `"${title}" se subió y el análisis con IA comenzó automáticamente.`,
       });
 
       // Resetear estado
@@ -369,16 +325,13 @@ export default function DashboardPage() {
         fileInputRef.current.value = "";
       }
 
-      // Recargar partidos
+      // Recargar partidos y disparar análisis
       await loadMatches();
+      triggerAnalysis(matchId);
     } catch (error: unknown) {
       console.error("Error en upload:", error);
       const message = error instanceof Error ? error.message : "Error desconocido";
-      toast({
-        title: "Error al subir el video",
-        description: message,
-        variant: "destructive",
-      });
+      toast({ title: "Error al subir el video", description: message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -395,8 +348,48 @@ export default function DashboardPage() {
     }
   };
 
-  const displayMatches = matches.length > 0 ? matches : placeholderMatches;
-  const isUsingPlaceholders = matches.length === 0;
+  // ─── Stats calculados de partidos reales ─────────────────────────────
+  const realStats = matches.length > 0 ? {
+    total: matches.length,
+    analyzed: matches.filter((m) => m.status === "analyzed").length,
+    processing: matches.filter((m) => m.status === "processing").length,
+    uploaded: matches.filter((m) => m.status === "uploaded").length,
+  } : null;
+
+  const statsCards = realStats ? [
+    {
+      label: "Partidos totales",
+      value: String(realStats.total),
+      icon: Activity,
+      description: `${realStats.uploaded} pendientes`,
+    },
+    {
+      label: "Analizados",
+      value: String(realStats.analyzed),
+      icon: BarChart3,
+      description: realStats.total > 0 ? `${Math.round((realStats.analyzed / realStats.total) * 100)}% completados` : "Sin datos",
+    },
+    {
+      label: "En proceso",
+      value: String(realStats.processing),
+      icon: Loader2,
+      description: realStats.processing > 0 ? "Procesando ahora" : "Ninguno",
+    },
+    {
+      label: "Pendientes",
+      value: String(realStats.uploaded),
+      icon: Upload,
+      description: "Listos para analizar",
+    },
+  ] : [
+    { label: "Partidos totales", value: "0", icon: Activity, description: "Subí tu primer video" },
+    { label: "Analizados", value: "0", icon: BarChart3, description: "Sin datos" },
+    { label: "En proceso", value: "0", icon: Loader2, description: "Ninguno" },
+    { label: "Pendientes", value: "0", icon: Upload, description: "Listos para analizar" },
+  ];
+
+  const displayMatches = matches;
+  const hasMatches = matches.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -462,7 +455,7 @@ export default function DashboardPage() {
         {/* Welcome section */}
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Hola, {userProfile?.name || user?.displayName || "Usuario"} 👋
+            Hola, {userProfile?.name || user?.displayName || "Usuario"}
           </h1>
           <p className="text-muted-foreground mt-1">
             Acá tenés un resumen de tu actividad y tus partidos.
@@ -472,7 +465,6 @@ export default function DashboardPage() {
         {/* Upload video card */}
         <Card className="mb-8 border-dashed border-2 hover:border-primary/50 transition-colors">
           <CardContent className="py-6">
-            {/* Input oculto para seleccionar archivo */}
             <input
               ref={fileInputRef}
               type="file"
@@ -553,7 +545,6 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Campo de título */}
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-1 block">
                     Nombre del partido
@@ -568,7 +559,6 @@ export default function DashboardPage() {
                   />
                 </div>
 
-                {/* Barra de progreso */}
                 {uploading && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
@@ -584,13 +574,8 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {/* Botones de acción */}
                 <div className="flex gap-3">
-                  <Button
-                    onClick={handleUpload}
-                    disabled={uploading}
-                    className="flex-1"
-                  >
+                  <Button onClick={handleUpload} disabled={uploading} className="flex-1">
                     {uploading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -630,7 +615,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Campo de URL */}
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-1 block">
                     URL del video
@@ -659,14 +643,13 @@ export default function DashboardPage() {
                     </p>
                   )}
                   {youtubeUrl.trim() && isValidYouTubeUrl(youtubeUrl) && (
-                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                    <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3" />
                       URL válida — Video ID: {extractYouTubeId(youtubeUrl)}
                     </p>
                   )}
                 </div>
 
-                {/* Error inline */}
                 {youtubeError && (
                   <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20">
                     <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
@@ -674,7 +657,6 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {/* Campo de título */}
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-1 block">
                     Nombre del partido (opcional)
@@ -689,13 +671,8 @@ export default function DashboardPage() {
                   />
                 </div>
 
-                {/* Botones */}
                 <div className="flex gap-3">
-                  <Button
-                    onClick={handleYouTubeSubmit}
-                    disabled={uploading}
-                    className="flex-1"
-                  >
+                  <Button onClick={handleYouTubeSubmit} disabled={uploading} className="flex-1">
                     {uploading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -704,7 +681,7 @@ export default function DashboardPage() {
                     ) : (
                       <>
                         <Youtube className="mr-2 h-4 w-4" />
-                        Agregar video de YouTube
+                        Agregar y analizar con IA
                       </>
                     )}
                   </Button>
@@ -719,15 +696,15 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Stats grid */}
+        {/* Stats grid — datos reales */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {placeholderStats.map((stat) => (
+          {statsCards.map((stat) => (
             <Card key={stat.label}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                   {stat.label}
                 </CardTitle>
-                <stat.icon className="h-4 w-4 text-muted-foreground" />
+                <stat.icon className={`h-4 w-4 ${stat.label === "En proceso" && stat.value !== "0" ? "animate-spin text-yellow-400" : "text-muted-foreground"}`} />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stat.value}</div>
@@ -741,9 +718,6 @@ export default function DashboardPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Historial de partidos</h2>
-            <Button variant="ghost" size="sm" className="text-muted-foreground">
-              Ver todos
-            </Button>
           </div>
 
           {loadingMatches ? (
@@ -751,17 +725,28 @@ export default function DashboardPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               <span className="ml-2 text-muted-foreground">Cargando partidos...</span>
             </div>
+          ) : !hasMatches ? (
+            <div className="text-center py-12">
+              <Play className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                No tenés partidos todavía. Subí tu primer video para comenzar a ver análisis reales con IA.
+              </p>
+            </div>
           ) : (
             <div className="space-y-3">
               {displayMatches.map((match) => (
-                <Card key={match.id} className="hover:shadow-md transition-shadow">
+                <Card
+                  key={match.id}
+                  className="hover:shadow-md hover:border-primary/20 transition-all cursor-pointer"
+                  onClick={() => router.push(`/dashboard/matches/${match.id}`)}
+                >
                   <CardContent className="flex items-center justify-between py-4 px-6">
                     <div className="flex items-center gap-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
                         {match.status === "analyzed" ? (
-                          <BarChart3 className="h-5 w-5 text-green-600" />
+                          <BarChart3 className="h-5 w-5 text-green-400" />
                         ) : match.status === "processing" ? (
-                          <Loader2 className="h-5 w-5 text-yellow-600 animate-spin" />
+                          <Loader2 className="h-5 w-5 text-yellow-400 animate-spin" />
                         ) : match.status === "error" ? (
                           <AlertCircle className="h-5 w-5 text-destructive" />
                         ) : (
@@ -780,48 +765,22 @@ export default function DashboardPage() {
                           <Badge variant="outline" className="text-xs py-0 px-1.5">
                             {match.sport}
                           </Badge>
+                          {match.status === "analyzed" && (
+                            <Badge variant="outline" className="text-xs py-0 px-1.5 text-primary border-primary/30">
+                              <Zap className="h-2.5 w-2.5 mr-0.5" />
+                              Ver análisis
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
                       {getStatusBadge(match.status)}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {match.status === "analyzed" && (
-                            <DropdownMenuItem className="cursor-pointer">
-                              <BarChart3 className="mr-2 h-4 w-4" />
-                              Ver análisis
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem className="cursor-pointer">
-                            <Eye className="mr-2 h-4 w-4" />
-                            Ver detalles
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
-                            Eliminar
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          )}
-
-          {/* Empty state hint */}
-          {isUsingPlaceholders && (
-            <div className="mt-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Estos son datos de ejemplo. Subí tu primer video para comenzar a ver análisis reales.
-              </p>
             </div>
           )}
         </div>
