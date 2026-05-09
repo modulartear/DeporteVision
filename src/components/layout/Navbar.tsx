@@ -22,7 +22,7 @@ export function Navbar() {
   const navLinks = [
     { href: "/#value", label: "Para tu club" },
     { href: "/#demo", label: "Análisis" },
-    { href: "/#gallery", label: "Instalaciones" },
+    { href: "/#gallery", label: "Deportes" },
     { href: "/#pricing", label: "Planes" },
     { href: "/#contact", label: "Contacto" },
   ];

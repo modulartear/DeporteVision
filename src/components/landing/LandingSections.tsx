@@ -36,7 +36,7 @@ export function HeroSection() {
       <div
         className="absolute inset-0 bg-cover bg-center-[center_25%] brightness-[0.28] saturate-[0.6] scale-[1.06] transition-transform duration-[9s] ease-out"
         style={{
-          backgroundImage: "url('https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=1400')",
+          backgroundImage: "url('https://images.pexels.com/photos/33641987/pexels-photo-33641987.jpeg?auto=compress&cs=tinysrgb&w=1400')",
         }}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-[#07090D] via-[#07090D]/60 to-[#07090D]/10" />
@@ -150,7 +150,7 @@ export function ValueSection() {
       <div className="reveal grid grid-cols-1 md:grid-cols-2 gap-1">
         {/* Visual panel */}
         <div className="relative overflow-hidden min-h-[400px] md:min-h-[560px] bg-[#171B23]">
-          <img src="https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=800" alt="Club de pádel" className="w-full h-full object-cover brightness-[0.35] saturate-[0.5]" />
+          <img src="https://images.pexels.com/photos/4536850/pexels-photo-4536850.jpeg?auto=compress&cs=tinysrgb&w=800" alt="Cancha de pádel análisis" className="w-full h-full object-cover brightness-[0.35] saturate-[0.5]" />
           {/* UI Panels overlay */}
           <div className="absolute top-5 left-5 right-5 flex flex-col gap-2">
             <div className="bg-[rgba(7,9,13,0.88)] border border-[rgba(239,237,231,0.13)] backdrop-blur-md p-3.5">
@@ -223,10 +223,10 @@ export function ValueSection() {
 // ─── HOW SECTION ─────────────────────────────────────────────────────
 export function HowSection() {
   const steps = [
-    { num: "01", icon: "📐", title: "INSTALACIÓN EN TU ESTABLECIMIENTO", desc: "Nuestro equipo visita tu club e instala las cámaras en cada cancha. El proceso demora entre 2 y 4 horas según la cantidad de canchas. Sin obras, sin cableado complejo." },
-    { num: "02", icon: "⚙️", title: "CONFIGURACIÓN DE TU PANEL DE GESTIÓN", desc: "Accedés a un panel de administración donde ves todas las canchas en tiempo real, gestionás los socios y controlás qué partidos se graban y cuáles no." },
-    { num: "03", icon: "👥", title: "TUS SOCIOS SE REGISTRAN EN LA APP", desc: "Cada socio descarga la app, se vincula al club y a partir del primer partido ya tiene acceso a su historial, análisis y clips. Sin configuración adicional de tu parte." },
-    { num: "04", icon: "💰", title: "OFRECÉS EL SERVICIO Y GENERÁS VALOR", desc: "Decidís si el análisis va incluido en la membresía o como servicio adicional. Nosotros te asesoramos en cómo monetizarlo según el perfil de tu club." },
+    { num: "01", icon: "📐", title: "INSTALACIÓN EN TU ESTABLECIMIENTO", desc: "Nuestro equipo visita tu club e instala las cámaras en cada cancha. El proceso demora entre 2 y 4 horas. Sin obras, sin cableado complejo." },
+    { num: "02", icon: "⚙️", title: "CONFIGURACIÓN DE TU PANEL DE GESTIÓN", desc: "Accedés a un panel de administración donde ves todas las canchas en tiempo real, gestionás los socios y controlás qué partidos se graban." },
+    { num: "03", icon: "👥", title: "TUS SOCIOS SE REGISTRAN EN LA APP", desc: "Cada socio descarga la app, se vincula al club y a partir del primer partido ya tiene acceso a su historial, análisis y clips." },
+    { num: "04", icon: "💰", title: "OFRECÉS EL SERVICIO Y GENERÁS VALOR", desc: "Decidís si el análisis va incluido en la membresía o como servicio adicional. Te asesoramos en cómo monetizarlo según el perfil de tu club." },
   ];
 
   return (
@@ -341,7 +341,7 @@ export function DemoSection() {
           {[
             { label: "Error crítico detectado", title: "COBERTURA LATERAL", score: "32%", color: "#FF5F5F", pct: 32, note: "La pareja abandona el lateral izquierdo en el 71% de los ataques rivales. El rival lo explota desde la pared para ganar el punto." },
             { label: "Área de mejora", title: "SMASH AL FONDO", score: "51%", color: "#FFB432", pct: 51, note: "El smash al fondo tiene solo 51% de efectividad. La IA detectó que la mayoría van al centro, donde el rival los espera." },
-            { label: "Punto fuerte", title: "VOLEA CRUZADA", score: "89%", color: "#C8F73A", pct: 89, note: "La volea cruzada al sector de ventaja tiene un 89% de efectividad. Es la jugada ganadora del equipo. Hay que usarla más." },
+            { label: "Punto fuerte", title: "VOLEA CRUZADA", score: "89%", color: "#C8F73A", pct: 89, note: "La volea cruzada al sector de ventaja tiene un 89% de efectividad. Es la jugada ganadora del equipo." },
           ].map((card) => (
             <div key={card.title} className="bg-[#0F1217] border border-[rgba(239,237,231,0.07)] p-5 hover:bg-[#171B23] transition-colors">
               <div className="flex items-start justify-between mb-2.5">
@@ -359,8 +359,8 @@ export function DemoSection() {
           ))}
           {/* Summary card */}
           <div className="bg-[#0F1217] border border-[rgba(239,237,231,0.07)] p-5 hover:bg-[#171B23] transition-colors">
-            <div className="text-[0.58rem] tracking-[0.13em] uppercase text-[#3AF7C8] mb-1">Estadística del partido</div>
-            <div className="font-[family-name:var(--font-display)] text-[1.05rem] tracking-[0.03em] mb-2">RESUMEN FINAL</div>
+            <div className="text-[0.58rem] tracking-[0.13em] uppercase text-[#3AF7C8] mb-1">Resumen del partido</div>
+            <div className="font-[family-name:var(--font-display)] text-[1.05rem] tracking-[0.03em] mb-2">ESTADÍSTICAS FINALES</div>
             <div className="grid grid-cols-2 gap-1">
               {[
                 { val: "78%", label: "Posesión", color: "#C8F73A" },
@@ -394,11 +394,11 @@ export function GallerySection() {
   const panels: Record<string, { items: { span?: boolean; img: string; label: string; chips?: { text: string; color: string }[] }[]; extras?: { label: string; title: string }[] }> = {
     padel: {
       items: [
-        { span: true, img: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Padel_court_-_Padel_Pro_Tour.jpg/1280px-Padel_court_-_Padel_Pro_Tour.jpg", label: "PÁDEL · Club con 4 canchas · Instalación completa", chips: [{ text: "● 4 canchas activas", color: "g" }, { text: "Setup en 1 día", color: "b" }] },
-        { img: "https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=600", label: "PARTIDO · Grabación automática 4K" },
-        { img: "https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg?auto=compress&cs=tinysrgb&w=600", label: "VISTA CENITAL · Tracking de jugadores" },
-        { img: "https://images.pexels.com/photos/114296/pexels-photo-114296.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ON DEMAND · Clips para los socios" },
-        { img: "https://images.pexels.com/photos/274422/pexels-photo-274422.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ANÁLISIS · Heatmap de cancha" },
+        { span: true, img: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Padel_court_-_Padel_Pro_Tour.jpg/1280px-Padel_court_-_Padel_Pro_Tour.jpg", label: "PÁDEL · Cancha profesional con análisis completo", chips: [{ text: "● 4 canchas activas", color: "g" }, { text: "Setup en 1 día", color: "b" }] },
+        { img: "https://images.pexels.com/photos/33641987/pexels-photo-33641987.jpeg?auto=compress&cs=tinysrgb&w=600", label: "JUGADOR · Análisis individual por socio" },
+        { img: "https://images.pexels.com/photos/4536850/pexels-photo-4536850.jpeg?auto=compress&cs=tinysrgb&w=600", label: "EQUIPAMIENTO · Compatible con toda la cancha" },
+        { img: "https://images.pexels.com/photos/1103833/pexels-photo-1103833.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ON DEMAND · Clips disponibles post-partido" },
+        { img: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Padel_court_-_Padel_Pro_Tour.jpg/640px-Padel_court_-_Padel_Pro_Tour.jpg", label: "HEATMAP · Zonas de error y cobertura" },
       ],
       extras: [
         { label: "Análisis pádel", title: "Efectividad de smash" },
@@ -410,29 +410,29 @@ export function GallerySection() {
     },
     tenis: {
       items: [
-        { span: true, img: "https://images.pexels.com/photos/1263426/pexels-photo-1263426.jpeg?auto=compress&cs=tinysrgb&w=800", label: "TENIS · Análisis de golpes y posicionamiento", chips: [{ text: "Compatibilidad total", color: "b" }] },
-        { img: "https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=600", label: "SAQUE · Velocidad y dirección" },
-        { img: "https://images.pexels.com/photos/274422/pexels-photo-274422.jpeg?auto=compress&cs=tinysrgb&w=600", label: "VOLEA · Análisis de red" },
-        { img: "https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg?auto=compress&cs=tinysrgb&w=600", label: "MAPA · Zonas de golpe" },
-        { img: "https://images.pexels.com/photos/114296/pexels-photo-114296.jpeg?auto=compress&cs=tinysrgb&w=600", label: "CLIPS · Puntos clave automáticos" },
+        { span: true, img: "https://images.pexels.com/photos/1103833/pexels-photo-1103833.jpeg?auto=compress&cs=tinysrgb&w=800", label: "TENIS · Análisis de golpes y posicionamiento", chips: [{ text: "Compatibilidad total", color: "b" }] },
+        { img: "https://images.pexels.com/photos/4536850/pexels-photo-4536850.jpeg?auto=compress&cs=tinysrgb&w=600", label: "SAQUE · Velocidad y dirección" },
+        { img: "https://images.pexels.com/photos/33641987/pexels-photo-33641987.jpeg?auto=compress&cs=tinysrgb&w=600", label: "VOLEA · Análisis de red" },
+        { img: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Padel_court_-_Padel_Pro_Tour.jpg/640px-Padel_court_-_Padel_Pro_Tour.jpg", label: "CANCHA · Vista cenital completa" },
+        { img: "https://images.pexels.com/photos/1103833/pexels-photo-1103833.jpeg?auto=compress&cs=tinysrgb&w=600", label: "CLIPS · Puntos clave automáticos" },
       ],
     },
     squash: {
       items: [
-        { span: true, img: "https://images.pexels.com/photos/2277981/pexels-photo-2277981.jpeg?auto=compress&cs=tinysrgb&w=800", label: "SQUASH · Tracking de movimiento y pared", chips: [{ text: "Cámara de alta velocidad", color: "a" }] },
-        { img: "https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=600", label: "GOLPE · Análisis de impacto" },
-        { img: "https://images.pexels.com/photos/1752753/pexels-photo-1752753.jpeg?auto=compress&cs=tinysrgb&w=600", label: "MOVIMIENTO · Cobertura de cancha" },
-        { img: "https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg?auto=compress&cs=tinysrgb&w=600", label: "HEATMAP · Zonas de mayor error" },
-        { img: "https://images.pexels.com/photos/274422/pexels-photo-274422.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ON DEMAND · Jugadas clave" },
+        { span: true, img: "https://images.pexels.com/photos/4536850/pexels-photo-4536850.jpeg?auto=compress&cs=tinysrgb&w=800", label: "SQUASH · Tracking de movimiento en paredes", chips: [{ text: "Cámara de alta velocidad", color: "a" }] },
+        { img: "https://images.pexels.com/photos/33641987/pexels-photo-33641987.jpeg?auto=compress&cs=tinysrgb&w=600", label: "GOLPE · Análisis de impacto" },
+        { img: "https://images.pexels.com/photos/1103833/pexels-photo-1103833.jpeg?auto=compress&cs=tinysrgb&w=600", label: "MOVIMIENTO · Cobertura de cancha" },
+        { img: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Padel_court_-_Padel_Pro_Tour.jpg/640px-Padel_court_-_Padel_Pro_Tour.jpg", label: "HEATMAP · Zonas de mayor error" },
+        { img: "https://images.pexels.com/photos/4536850/pexels-photo-4536850.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ON DEMAND · Jugadas clave" },
       ],
     },
     futsal: {
       items: [
         { span: true, img: "https://images.pexels.com/photos/1752757/pexels-photo-1752757.jpeg?auto=compress&cs=tinysrgb&w=800", label: "FÚTBOL SALA · Análisis táctico de equipo", chips: [{ text: "Multi-jugador tracking", color: "g" }] },
-        { img: "https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ATAQUE · Sistema ofensivo" },
-        { img: "https://images.pexels.com/photos/46798/the-ball-stadion-football-the-pitch-46798.jpeg?auto=compress&cs=tinysrgb&w=600", label: "HEATMAP · Posesión por zonas" },
-        { img: "https://images.pexels.com/photos/114296/pexels-photo-114296.jpeg?auto=compress&cs=tinysrgb&w=600", label: "TRACKING · Trayectoria del balón" },
-        { img: "https://images.pexels.com/photos/274422/pexels-photo-274422.jpeg?auto=compress&cs=tinysrgb&w=600", label: "PORTERO · Análisis de paradas" },
+        { img: "https://images.pexels.com/photos/33641987/pexels-photo-33641987.jpeg?auto=compress&cs=tinysrgb&w=600", label: "ATAQUE · Sistema ofensivo" },
+        { img: "https://images.pexels.com/photos/4536850/pexels-photo-4536850.jpeg?auto=compress&cs=tinysrgb&w=600", label: "HEATMAP · Posesión por zonas" },
+        { img: "https://images.pexels.com/photos/1103833/pexels-photo-1103833.jpeg?auto=compress&cs=tinysrgb&w=600", label: "TRACKING · Trayectoria del balón" },
+        { img: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Padel_court_-_Padel_Pro_Tour.jpg/640px-Padel_court_-_Padel_Pro_Tour.jpg", label: "ON DEMAND · Clips automáticos" },
       ],
     },
   };
@@ -547,7 +547,7 @@ export function PricingSection() {
     {
       tier: "CLUB STARTER",
       tagline: "Para clubes de hasta 2 canchas que quieren empezar con la tecnología de análisis.",
-      price: "149",
+      price: "80.000",
       per: "/ mes por club",
       features: [
         { text: "Hasta 2 canchas con cámara", included: true },
@@ -564,7 +564,7 @@ export function PricingSection() {
     {
       tier: "CLUB PRO",
       tagline: "Para clubes con 3 a 6 canchas que quieren ofrecer análisis profesional a sus socios.",
-      price: "349",
+      price: "180.000",
       per: "/ mes por club",
       features: [
         { text: "Hasta 6 canchas con cámara", included: true },
@@ -575,7 +575,7 @@ export function PricingSection() {
         { text: "Clips automáticos por evento", included: true },
         { text: "90 días de almacenamiento", included: true },
         { text: "Soporte prioritario 7 días", included: true },
-        { text: "Informes para entrenadores", included: true },
+        { text: "Informes para entrenadores en PDF", included: true },
       ],
       cta: "Solicitar demo gratuita →",
       featured: true,
@@ -653,7 +653,7 @@ export function PricingSection() {
 export function CTASection() {
   return (
     <section id="contact" className="px-6 md:px-12 py-24 md:py-36 text-center relative overflow-hidden border-t border-[rgba(239,237,231,0.07)]">
-      <div className="absolute inset-0 bg-cover bg-center brightness-[0.1] saturate-30" style={{ backgroundImage: "url('https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=1400')" }} />
+      <div className="absolute inset-0 bg-cover bg-center brightness-[0.1] saturate-30" style={{ backgroundImage: "url('https://images.pexels.com/photos/1103833/pexels-photo-1103833.jpeg?auto=compress&cs=tinysrgb&w=1400')" }} />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,rgba(200,247,58,0.06)_0%,transparent_70%)]" />
       <div className="relative z-10 reveal">
         <h2 className="font-[family-name:var(--font-display)] text-[clamp(3.5rem,8vw,7.5rem)] leading-[0.9]">
