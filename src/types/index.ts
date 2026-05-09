@@ -40,8 +40,11 @@ export interface MatchAnalysis {
   // Estadísticas por jugador (4 jugadores)
   playerStats: PlayerStats[];
 
-  // Distribución de tiros por zona de la cancha
+  // Distribución de tiros por zona de la cancha (global)
   shotHeatmap: ShotHeatmapPoint[];
+
+  // Heatmap individual por jugador (4 jugadores)
+  playerHeatmaps: PlayerHeatmap[];
 
   // Posesión por set
   possessionBySet: PossessionSet[];
@@ -111,6 +114,14 @@ export interface ShotHeatmapPoint {
   y: number; // 0-100
   count: number;
   type: "winner" | "error" | "rally";
+}
+
+/** Heatmap individual de un jugador */
+export interface PlayerHeatmap {
+  playerName: string;
+  team: 1 | 2;
+  position: "derecha" | "revés";
+  points: ShotHeatmapPoint[];
 }
 
 export interface PossessionSet {

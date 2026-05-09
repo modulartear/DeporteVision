@@ -12,6 +12,7 @@ import type {
   TeamStats,
   PlayerStats,
   ShotHeatmapPoint,
+  PlayerHeatmap,
   PossessionSet,
   PointEvent,
   Clip,
@@ -134,28 +135,94 @@ function generatePlayerStats(name: string, team: 1 | 2, position: "derecha" | "r
   };
 }
 
-// ─── Generación de heatmap de tiros ─────────────────────────────────────
-function generateShotHeatmap(): ShotHeatmapPoint[] {
-  const zones = [
-    { zone: "fondo_derecha", x: 20, y: 75 },
-    { zone: "fondo_izquierda", x: 80, y: 75 },
-    { zone: "fondo_centro", x: 50, y: 80 },
-    { zone: "medio_derecha", x: 25, y: 55 },
-    { zone: "medio_izquierda", x: 75, y: 55 },
-    { zone: "red_derecha", x: 20, y: 30 },
-    { zone: "red_izquierda", x: 80, y: 30 },
-    { zone: "red_centro", x: 50, y: 25 },
-    { zone: "saque_derecha", x: 30, y: 92 },
-    { zone: "saque_izquierda", x: 70, y: 92 },
-    { zone: "barrera_derecha", x: 15, y: 40 },
-    { zone: "barrera_izquierda", x: 85, y: 40 },
-  ];
+// ─── Zonas base de la cancha ─────────────────────────────────────────────
+const COURT_ZONES = [
+  { zone: "fondo_derecha", x: 20, y: 75 },
+  { zone: "fondo_izquierda", x: 80, y: 75 },
+  { zone: "fondo_centro", x: 50, y: 80 },
+  { zone: "medio_derecha", x: 25, y: 55 },
+  { zone: "medio_izquierda", x: 75, y: 55 },
+  { zone: "red_derecha", x: 20, y: 30 },
+  { zone: "red_izquierda", x: 80, y: 30 },
+  { zone: "red_centro", x: 50, y: 25 },
+  { zone: "saque_derecha", x: 30, y: 92 },
+  { zone: "saque_izquierda", x: 70, y: 92 },
+  { zone: "barrera_derecha", x: 15, y: 40 },
+  { zone: "barrera_izquierda", x: 85, y: 40 },
+];
 
-  return zones.map((z) => ({
+// ─── Generación de heatmap de tiros (global) ─────────────────────────────
+function generateShotHeatmap(): ShotHeatmapPoint[] {
+  return COURT_ZONES.map((z) => ({
     ...z,
     count: rand(3, 25),
     type: (["winner", "error", "rally"] as const)[rand(0, 2)],
   }));
+}
+
+// ─── Generación de heatmap individual por jugador ─────────────────────────
+// Cada jugador tiene zonas preferidas según su posición:
+// - "derecha": más actividad en el lado derecho de la cancha
+// - "revés": más actividad en el lado izquierdo
+// - Jugadores de red: más actividad cerca de la red
+// - Jugadores de fondo: más actividad en el fondo
+function generatePlayerHeatmap(
+  playerName: string,
+  team: 1 | 2,
+  position: "derecha" | "revés",
+  isWinner: boolean
+): PlayerHeatmap {
+  // Los jugadores juegan en su mitad de la cancha según su posición
+  // Derecha: más tiros en el lado derecho (x < 50)
+  // Revés: más tiros en el lado izquierdo (x > 50)
+  const isDerecha = position === "derecha";
+
+  const points: ShotHeatmapPoint[] = COURT_ZONES.map((z) => {
+    // Base count: más tiros en zonas dominantes según posición
+    let baseCount = rand(2, 12);
+
+    // Potenciar zonas según posición del jugador
+    const isRightZone = z.x < 50;
+    const isLeftZone = z.x > 50;
+    const isNetZone = z.y < 45;
+    const isBackZone = z.y > 65;
+
+    if (isDerecha && isRightZone) baseCount = rand(8, 22);
+    if (!isDerecha && isLeftZone) baseCount = rand(8, 22);
+
+    // Los ganadores tienen más winners y menos errores
+    let shotType: ShotHeatmapPoint["type"];
+    if (isWinner) {
+      const r = Math.random();
+      if (r < 0.35) shotType = "winner";
+      else if (r < 0.55) shotType = "error";
+      else shotType = "rally";
+    } else {
+      const r = Math.random();
+      if (r < 0.2) shotType = "winner";
+      else if (r < 0.5) shotType = "error";
+      else shotType = "rally";
+    }
+
+    // Agregar ligera variación de posición para que cada jugador sea único
+    const jitterX = randFloat(-3, 3);
+    const jitterY = randFloat(-3, 3);
+
+    return {
+      zone: z.zone,
+      x: Math.max(5, Math.min(95, z.x + jitterX)),
+      y: Math.max(5, Math.min(95, z.y + jitterY)),
+      count: baseCount,
+      type: shotType,
+    };
+  });
+
+  return {
+    playerName,
+    team,
+    position,
+    points,
+  };
 }
 
 // ─── Generación de posesión por set ──────────────────────────────────────
@@ -329,6 +396,12 @@ export function generatePadelAnalysis(matchId: string): MatchAnalysis {
   ];
 
   const heatmap = generateShotHeatmap();
+  const playerHeatmaps: PlayerHeatmap[] = [
+    generatePlayerHeatmap(playerNames[0], 1, "derecha", result.winner === 1),
+    generatePlayerHeatmap(playerNames[1], 1, "revés", result.winner === 1),
+    generatePlayerHeatmap(playerNames[2], 2, "derecha", result.winner === 2),
+    generatePlayerHeatmap(playerNames[3], 2, "revés", result.winner === 2),
+  ];
   const possession = generatePossessionBySet(result.sets.length, result.winner);
   const pointSequence = generatePointSequence(result.sets);
   const clips = generateClips();
@@ -343,6 +416,7 @@ export function generatePadelAnalysis(matchId: string): MatchAnalysis {
     teamStats: [team1Stats, team2Stats],
     playerStats,
     shotHeatmap: heatmap,
+    playerHeatmaps,
     possessionBySet: possession,
     pointSequence: pointSequence.slice(0, 50), // Limitar para no saturar Firestore
     clips,

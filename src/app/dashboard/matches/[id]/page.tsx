@@ -29,7 +29,7 @@ import {
 import { getMatchById, getMatchAnalysis, updateMatchStatus, getCachedAnalysis, getCachedMatch, cacheAnalysisLocally } from "@/lib/firestore";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { generatePadelAnalysis } from "@/lib/padel-analysis";
-import type { Match, MatchAnalysis, MatchStatus } from "@/types";
+import type { Match, MatchAnalysis, MatchStatus, PlayerHeatmap, ShotHeatmapPoint } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 function getStatusInfo(status: MatchStatus) {
@@ -117,9 +117,10 @@ function StatCard({ icon: Icon, label, value, sub, color = "text-primary" }: {
 }
 
 // ─── Componente: Mini Cancha SVG ───────────────────────────────────────
-function MiniCourt({ heatmap }: { heatmap: MatchAnalysis["shotHeatmap"] }) {
+function MiniCourt({ heatmap, size = "large" }: { heatmap: ShotHeatmapPoint[]; size?: "large" | "small" }) {
+  const isSmall = size === "small";
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-auto max-h-72">
+    <svg viewBox="0 0 100 100" className={isSmall ? "w-full h-auto max-h-52" : "w-full h-auto max-h-72"}>
       <rect x="5" y="5" width="90" height="90" rx="2" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-muted-foreground/30" />
       <line x1="5" y1="50" x2="95" y2="50" stroke="currentColor" strokeWidth="0.8" className="text-primary/50" />
       <line x1="5" y1="35" x2="95" y2="35" stroke="currentColor" strokeWidth="0.3" className="text-muted-foreground/20" />
@@ -130,18 +131,67 @@ function MiniCourt({ heatmap }: { heatmap: MatchAnalysis["shotHeatmap"] }) {
         const maxCount = Math.max(...heatmap.map((p) => p.count));
         const intensity = point.count / maxCount;
         const color = point.type === "winner" ? "#22c55e" : point.type === "error" ? "#ef4444" : "#C8F73A";
+        const maxR = isSmall ? 4 : 5;
+        const minR = isSmall ? 1.5 : 2;
         return (
           <circle
             key={i}
             cx={point.x}
             cy={point.y}
-            r={2 + intensity * 5}
+            r={minR + intensity * maxR}
             fill={color}
             opacity={0.3 + intensity * 0.5}
           />
         );
       })}
     </svg>
+  );
+}
+
+// ─── Componente: Player Heatmap Card ────────────────────────────────────
+function PlayerHeatmapCard({ playerHeatmap, isWinner }: { playerHeatmap: PlayerHeatmap; isWinner: boolean }) {
+  const totalShots = playerHeatmap.points.reduce((sum, p) => sum + p.count, 0);
+  const winners = playerHeatmap.points.filter((p) => p.type === "winner").reduce((sum, p) => sum + p.count, 0);
+  const errors = playerHeatmap.points.filter((p) => p.type === "error").reduce((sum, p) => sum + p.count, 0);
+  const winnerPct = totalShots > 0 ? Math.round((winners / totalShots) * 100) : 0;
+  const errorPct = totalShots > 0 ? Math.round((errors / totalShots) * 100) : 0;
+
+  return (
+    <Card className={`bg-card border-border/50 ${isWinner ? "ring-1 ring-primary/30" : ""}`}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">{playerHeatmap.playerName}</CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              Eq. {playerHeatmap.team} · {playerHeatmap.position}
+            </Badge>
+            {isWinner && (
+              <Badge className="bg-primary/10 text-primary text-xs py-0">
+                <Trophy className="h-2.5 w-2.5 mr-0.5" />
+                Ganador
+              </Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <MiniCourt heatmap={playerHeatmap.points} size="small" />
+        <div className="grid grid-cols-3 gap-2 text-xs text-center pt-1">
+          <div className="rounded-md bg-muted/40 px-2 py-1.5">
+            <p className="text-muted-foreground">Tiros</p>
+            <p className="font-bold text-sm">{totalShots}</p>
+          </div>
+          <div className="rounded-md bg-green-500/10 px-2 py-1.5">
+            <p className="text-green-400">Winners</p>
+            <p className="font-bold text-sm text-green-400">{winnerPct}%</p>
+          </div>
+          <div className="rounded-md bg-red-500/10 px-2 py-1.5">
+            <p className="text-red-400">Errores</p>
+            <p className="font-bold text-sm text-red-400">{errorPct}%</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -562,7 +612,7 @@ export default function MatchAnalysisPage() {
   const smashRate = analysis.teamStats[winnerTeam - 1].smashWinRate + "%";
   const pointsLabel = analysis.result.totalPoints + " puntos";
 
-  const { result, teamStats, playerStats, shotHeatmap, possessionBySet, clips, aiSummary, keyMetrics } = analysis;
+  const { result, teamStats, playerStats, shotHeatmap, playerHeatmaps, possessionBySet, clips, aiSummary, keyMetrics } = analysis;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -705,81 +755,100 @@ export default function MatchAnalysisPage() {
           </CardContent>
         </Card>
 
-        {/* Heatmap de tiros + Clips */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="bg-card">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Target className="h-5 w-5 text-primary" />
-                Mapa de tiros
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        {/* Heatmap global de tiros */}
+        <Card className="bg-card">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              Mapa de tiros - General
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-w-lg mx-auto">
               <MiniCourt heatmap={shotHeatmap} />
-              <div className="flex justify-center gap-4 mt-3">
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                  <span className="text-xs text-muted-foreground">Winners</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                  <span className="text-xs text-muted-foreground">Errores</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2.5 w-2.5 rounded-full bg-[#C8F73A]" />
-                  <span className="text-xs text-muted-foreground">Rally</span>
-                </div>
+            </div>
+            <div className="flex justify-center gap-4 mt-3">
+              <div className="flex items-center gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                <span className="text-xs text-muted-foreground">Winners</span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex items-center gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                <span className="text-xs text-muted-foreground">Errores</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="h-2.5 w-2.5 rounded-full bg-[#C8F73A]" />
+                <span className="text-xs text-muted-foreground">Rally</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-          {/* Clips generados */}
-          <Card className="bg-card">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Video className="h-5 w-5 text-primary" />
-                Clips automáticos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {clips.map((clip) => (
-                  <div
-                    key={clip.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                        clip.type === "winner" ? "bg-green-500/10 text-green-400" :
-                        clip.type === "error" ? "bg-red-500/10 text-red-400" :
-                        clip.type === "amazing_point" ? "bg-primary/10 text-primary" :
-                        "bg-yellow-500/10 text-yellow-400"
-                      }`}>
-                        {clip.type === "amazing_point" ? (
-                          <Star className="h-4 w-4" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{clip.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {Math.floor(clip.startTime / 60)}:{(clip.startTime % 60).toString().padStart(2, "0")} -
-                          {Math.floor(clip.endTime / 60)}:{(clip.endTime % 60).toString().padStart(2, "0")}
-                        </p>
-                      </div>
+        {/* Heatmap por jugador */}
+        {playerHeatmaps && playerHeatmaps.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Target className="h-5 w-5 text-primary" />
+              Mapa de calor por jugador
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {playerHeatmaps.map((ph, i) => (
+                <PlayerHeatmapCard
+                  key={i}
+                  playerHeatmap={ph}
+                  isWinner={ph.team === winnerTeam}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Clips generados */}
+        <Card className="bg-card">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Video className="h-5 w-5 text-primary" />
+              Clips automáticos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {clips.map((clip) => (
+                <div
+                  key={clip.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                      clip.type === "winner" ? "bg-green-500/10 text-green-400" :
+                      clip.type === "error" ? "bg-red-500/10 text-red-400" :
+                      clip.type === "amazing_point" ? "bg-primary/10 text-primary" :
+                      "bg-yellow-500/10 text-yellow-400"
+                    }`}>
+                      {clip.type === "amazing_point" ? (
+                        <Star className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
                     </div>
-                    <Badge variant="outline" className="text-xs">
-                      {clip.type === "winner" ? "Winner" :
-                       clip.type === "error" ? "Error" :
-                       clip.type === "amazing_point" ? "Increíble" : "Punto clave"}
-                    </Badge>
+                    <div>
+                      <p className="text-sm font-medium">{clip.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {Math.floor(clip.startTime / 60)}:{(clip.startTime % 60).toString().padStart(2, "0")} -
+                        {Math.floor(clip.endTime / 60)}:{(clip.endTime % 60).toString().padStart(2, "0")}
+                      </p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                  <Badge variant="outline" className="text-xs">
+                    {clip.type === "winner" ? "Winner" :
+                     clip.type === "error" ? "Error" :
+                     clip.type === "amazing_point" ? "Increíble" : "Punto clave"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Estadísticas por jugador */}
         <div>

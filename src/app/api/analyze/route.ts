@@ -123,6 +123,27 @@ function generateAnalysis() {
     { zone:"saque_izquierda", x:70, y:92, count:rand(3,10), type:"rally" },
   ];
 
+  // Heatmap individual por jugador
+  const playerHeatmaps = playerNames.map((name, i) => {
+    const team = (i < 2 ? 1 : 2) as 1|2;
+    const position = (i % 2 === 0 ? "derecha" : "revés") as "derecha"|"revés";
+    const isW = team === winner;
+    const isDerecha = position === "derecha";
+    const points = [
+      { zone:"fondo_derecha", x:20 + rand(-3,3), y:75 + rand(-3,3), count: isDerecha ? rand(8,22) : rand(2,10), type: isW ? (Math.random()<0.35?"winner":Math.random()<0.5?"error":"rally") : (Math.random()<0.2?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"fondo_izquierda", x:80 + rand(-3,3), y:75 + rand(-3,3), count: !isDerecha ? rand(8,22) : rand(2,10), type: isW ? (Math.random()<0.35?"winner":Math.random()<0.5?"error":"rally") : (Math.random()<0.2?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"fondo_centro", x:50 + rand(-3,3), y:80 + rand(-3,3), count: rand(4,18), type: (Math.random()<0.33?"winner":Math.random()<0.5?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"medio_derecha", x:25 + rand(-3,3), y:55 + rand(-3,3), count: isDerecha ? rand(6,18) : rand(2,8), type: isW ? (Math.random()<0.4?"winner":Math.random()<0.5?"error":"rally") : (Math.random()<0.2?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"medio_izquierda", x:75 + rand(-3,3), y:55 + rand(-3,3), count: !isDerecha ? rand(6,18) : rand(2,8), type: isW ? (Math.random()<0.4?"winner":Math.random()<0.5?"error":"rally") : (Math.random()<0.2?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"red_derecha", x:20 + rand(-3,3), y:30 + rand(-3,3), count: isDerecha ? rand(10,28) : rand(3,10), type: isW ? (Math.random()<0.45?"winner":Math.random()<0.4?"error":"rally") : (Math.random()<0.2?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"red_izquierda", x:80 + rand(-3,3), y:30 + rand(-3,3), count: !isDerecha ? rand(10,28) : rand(3,10), type: isW ? (Math.random()<0.45?"winner":Math.random()<0.4?"error":"rally") : (Math.random()<0.2?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"red_centro", x:50 + rand(-3,3), y:25 + rand(-3,3), count: rand(8,25), type: isW ? (Math.random()<0.4?"winner":Math.random()<0.4?"error":"rally") : (Math.random()<0.25?"winner":Math.random()<0.4?"error":"rally") as "winner"|"error"|"rally" },
+      { zone:"saque_derecha", x:30 + rand(-3,3), y:92 + rand(-2,2), count: rand(2,8), type: "rally" as const },
+      { zone:"saque_izquierda", x:70 + rand(-3,3), y:92 + rand(-2,2), count: rand(2,8), type: "rally" as const },
+    ];
+    return { playerName: name, team, position, points };
+  });
+
   const possessionBySet = sets.map((_, i) => {
     const t1p = rand(48,62);
     return { setNumber: i+1, team1: winner===1?t1p:100-t1p, team2: winner===1?100-t1p:t1p };
@@ -164,6 +185,7 @@ function generateAnalysis() {
     teamStats,
     playerStats,
     shotHeatmap: heatmap,
+    playerHeatmaps,
     possessionBySet,
     clips,
     aiSummary,
