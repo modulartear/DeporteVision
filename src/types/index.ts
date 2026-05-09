@@ -20,6 +20,7 @@ export interface Match {
   videoUrl: string;
   status: MatchStatus;
   createdAt: Timestamp;
+  playerNames?: string[];
   analysis?: MatchAnalysis;
 }
 
@@ -55,8 +56,14 @@ export interface MatchAnalysis {
   // Clips generados automáticamente
   clips: Clip[];
 
-  // Resumen narrativo generado por IA
+  // Resumen narrativo corto generado por IA
   aiSummary: string;
+
+  // Informe completo WPT-level generado por IA (Markdown)
+  aiReport?: string;
+
+  // Nombres de jugadores ingresados por el usuario
+  playerNames?: string[];
 
   // Métricas clave
   keyMetrics: KeyMetric[];

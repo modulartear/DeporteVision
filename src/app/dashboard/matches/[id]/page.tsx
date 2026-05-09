@@ -29,6 +29,7 @@ import {
 import { getMatchById, getMatchAnalysis, updateMatchStatus, getCachedAnalysis, getCachedMatch, cacheAnalysisLocally } from "@/lib/firestore";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { generatePadelAnalysis } from "@/lib/padel-analysis";
+import ReactMarkdown from "react-markdown";
 import type { Match, MatchAnalysis, MatchStatus, PlayerHeatmap, ShotHeatmapPoint } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -463,41 +464,42 @@ export default function MatchAnalysisPage() {
     setProcessing(true);
 
     try {
-      // Intentar vía API primero
+      // Intentar vía API IA
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId }),
+        body: JSON.stringify({
+          matchId,
+          videoUrl: match?.videoUrl ?? "",
+          playerNames: match?.playerNames ?? [],
+        }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        await loadData();
+        if (data.analysis) {
+          cacheAnalysisLocally(matchId, data.analysis);
+          setAnalysis(data.analysis);
+          if (match) setMatch({ ...match, status: "analyzed" });
+        } else {
+          await loadData();
+        }
         return;
       }
     } catch (error) {
       console.warn("API falló, generando análisis local:", error);
     }
 
-    // Fallback: generar análisis localmente SIEMPRE
+    // Fallback: análisis local
     try {
       const localAnalysis = generatePadelAnalysis(matchId);
       cacheAnalysisLocally(matchId, localAnalysis);
       setAnalysis(localAnalysis);
-
-      // Intentar actualizar el estado en Firestore
       if (isFirebaseConfigured) {
-        try {
-          await updateMatchStatus(matchId, "analyzed");
-        } catch {
-          console.warn("No se pudo actualizar estado en Firestore");
-        }
+        await updateMatchStatus(matchId, "analyzed").catch(() => {});
       }
-
-      if (match) {
-        setMatch({ ...match, status: "analyzed" });
-      }
+      if (match) setMatch({ ...match, status: "analyzed" });
     } catch (innerError) {
       console.error("Error generando análisis local:", innerError);
     } finally {
@@ -909,6 +911,30 @@ export default function MatchAnalysisPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Informe completo IA — WPT Level */}
+        {analysis.aiReport && (
+          <Card className="bg-card border-primary/20">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Zap className="h-5 w-5 text-primary" />
+                Informe Completo IA — Nivel WPT
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="prose prose-sm dark:prose-invert max-w-none
+                prose-headings:text-foreground prose-headings:font-bold
+                prose-h1:text-xl prose-h2:text-base prose-h3:text-sm
+                prose-p:text-muted-foreground prose-p:leading-relaxed
+                prose-strong:text-foreground prose-strong:font-semibold
+                prose-ul:text-muted-foreground prose-li:my-0.5
+                prose-table:text-xs prose-th:text-foreground prose-td:text-muted-foreground
+                prose-hr:border-border">
+                <ReactMarkdown>{analysis.aiReport}</ReactMarkdown>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );

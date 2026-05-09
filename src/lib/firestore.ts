@@ -43,7 +43,8 @@ export async function createMatchDocument(
   userId: string,
   title: string,
   sport: string,
-  videoUrl: string
+  videoUrl: string,
+  playerNames: string[] = []
 ): Promise<string> {
   if (!db) throw new Error("Firestore no está inicializado. Verificá la configuración de Firebase.");
   const matchesRef = collection(db, "matches");
@@ -52,6 +53,7 @@ export async function createMatchDocument(
     title,
     sport,
     videoUrl,
+    playerNames,
     status: "uploaded",
     createdAt: serverTimestamp(),
   });
@@ -96,10 +98,13 @@ function analysisToFirestore(analysis: MatchAnalysis): Record<string, unknown> {
     teamStats: analysis.teamStats,
     playerStats: analysis.playerStats,
     shotHeatmap: analysis.shotHeatmap,
+    playerHeatmaps: analysis.playerHeatmaps,
     possessionBySet: analysis.possessionBySet,
     pointSequence: analysis.pointSequence,
     clips: analysis.clips,
     aiSummary: analysis.aiSummary,
+    aiReport: analysis.aiReport ?? "",
+    playerNames: analysis.playerNames ?? [],
     keyMetrics: analysis.keyMetrics,
   });
 
@@ -154,6 +159,8 @@ function firestoreToAnalysis(data: Record<string, unknown>): MatchAnalysis {
     pointSequence: raw.pointSequence || [],
     clips: raw.clips || [],
     aiSummary: raw.aiSummary || "",
+    aiReport: raw.aiReport || "",
+    playerNames: raw.playerNames || [],
     keyMetrics: raw.keyMetrics || [],
   } as MatchAnalysis;
 }

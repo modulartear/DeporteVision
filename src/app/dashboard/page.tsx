@@ -104,6 +104,7 @@ export default function DashboardPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [analyzingMatchId, setAnalyzingMatchId] = useState<string | null>(null);
+  const [playerNames, setPlayerNames] = useState(["", "", "", ""]);
 
   // Track matches that were just analyzed locally so we don't overwrite their status
   const locallyAnalyzed = useRef<Set<string>>(new Set());
@@ -240,62 +241,59 @@ export default function DashboardPage() {
   };
 
   /**
-   * Ejecuta el analisis completo del partido.
-   * Funciona tanto con Firestore como sin el (fallback local).
-   * SIEMPRE genera el analisis y lo guarda en localStorage.
+   * Ejecuta el análisis completo del partido usando IA real (z-ai VLM+LLM).
+   * Llama a /api/analyze que usa el motor de IA. Si falla, hace fallback local.
    */
-  const runAnalysis = async (matchId: string): Promise<{ success: boolean; analysis: MatchAnalysis | null }> => {
+  const runAnalysis = async (
+    matchId: string,
+    videoUrl: string,
+    names: string[]
+  ): Promise<{ success: boolean; analysis: MatchAnalysis | null }> => {
     console.log("[Analisis] Iniciando para match:", matchId);
 
     try {
-      // 1. Marcar como processing en Firestore (si esta disponible)
-      if (isFirebaseConfigured) {
-        try {
-          await updateMatchStatus(matchId, "processing");
-        } catch (err) {
-          console.warn("[Analisis] No se pudo actualizar estado en Firestore:", err);
-        }
-      }
-      console.log("[Analisis] Estado -> processing");
+      // 1. Llamar a la API de análisis IA
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId, videoUrl, playerNames: names.filter(Boolean) }),
+      });
 
-      // 2. Simular tiempo de procesamiento IA
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // 3. Generar analisis SIEMPRE
-      const analysis = generatePadelAnalysis(matchId);
-      console.log("[Analisis] Datos generados correctamente");
-
-      // 4. SIEMPRE guardar en caché local (localStorage)
-      cacheAnalysisLocally(matchId, analysis);
-      console.log("[Analisis] Guardado en caché local");
-
-      // 5. Intentar guardar en Firestore (best effort)
-      if (isFirebaseConfigured) {
-        try {
-          await saveMatchAnalysis(matchId, analysis);
-          console.log("[Analisis] Guardado en Firestore");
-        } catch (err) {
-          console.warn("[Analisis] No se pudo guardar en Firestore (usando caché local):", err);
-          // Intentar al menos actualizar el estado a "analyzed"
-          try {
-            await updateMatchStatus(matchId, "analyzed");
-          } catch {
-            console.warn("[Analisis] Tampoco se pudo actualizar estado en Firestore");
-          }
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.analysis) {
+          const analysis = data.analysis as MatchAnalysis;
+          cacheAnalysisLocally(matchId, analysis);
+          console.log("[Analisis] IA completada ✓");
+          return { success: true, analysis };
         }
       }
 
-      return { success: true, analysis };
-    } catch (error) {
-      console.error("[Analisis] Error:", error);
-      if (isFirebaseConfigured) {
-        try {
-          await updateMatchStatus(matchId, "error", error instanceof Error ? error.message : "Error desconocido");
-        } catch {
-          // Si esto tambien falla, no podemos hacer mucho mas
+      throw new Error("API no devolvió éxito");
+    } catch (apiError) {
+      console.warn("[Analisis] API falló, usando fallback local:", apiError);
+
+      // Fallback: análisis aleatorio local
+      try {
+        if (isFirebaseConfigured) {
+          await updateMatchStatus(matchId, "processing").catch(() => {});
         }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const analysis = generatePadelAnalysis(matchId);
+        cacheAnalysisLocally(matchId, analysis);
+        if (isFirebaseConfigured) {
+          await saveMatchAnalysis(matchId, analysis).catch(() =>
+            updateMatchStatus(matchId, "analyzed").catch(() => {})
+          );
+        }
+        return { success: true, analysis };
+      } catch (error) {
+        console.error("[Analisis] Error en fallback:", error);
+        if (isFirebaseConfigured) {
+          await updateMatchStatus(matchId, "error", error instanceof Error ? error.message : "Error").catch(() => {});
+        }
+        return { success: false, analysis: null };
       }
-      return { success: false, analysis: null };
     }
   };
 
@@ -306,12 +304,13 @@ export default function DashboardPage() {
   const createAndAnalyze = async (title: string, videoUrl: string) => {
     if (!user?.uid) return;
 
+    const validNames = playerNames.filter(Boolean);
     let matchId: string;
 
     try {
       // 1. Crear el partido en Firestore
       if (isFirebaseConfigured) {
-        matchId = await createMatchDocument(user.uid, title, "padel", videoUrl);
+        matchId = await createMatchDocument(user.uid, title, "padel", videoUrl, validNames);
         console.log("[Dashboard] Partido creado en Firestore:", matchId);
       } else {
         // Fallback: generar ID local
@@ -332,15 +331,16 @@ export default function DashboardPage() {
       title,
       sport: "padel",
       videoUrl,
+      playerNames: validNames,
       status: "processing",
       createdAt: new Date() as unknown as Match["createdAt"],
     };
     setMatches((prev) => [newMatch, ...prev]);
     cacheMatchLocally(newMatch);
 
-    // 3. Ejecutar analisis en segundo plano
+    // 3. Ejecutar análisis IA en segundo plano
     setAnalyzingMatchId(matchId);
-    const result = await runAnalysis(matchId);
+    const result = await runAnalysis(matchId, videoUrl, validNames);
     setAnalyzingMatchId(null);
 
     // 4. Actualizar estado local SIEMPRE - no importa si Firestore falló
@@ -513,6 +513,7 @@ export default function DashboardPage() {
     setYoutubeUrl("");
     setYoutubeError(null);
     setUploadProgress(0);
+    setPlayerNames(["", "", "", ""]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -735,6 +736,26 @@ export default function DashboardPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block flex items-center gap-1">
+                    <Zap className="h-3 w-3 text-primary" />
+                    Nombres de jugadores <span className="text-xs text-muted-foreground">(opcional · mejora el análisis IA)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {playerNames.map((name, i) => (
+                      <input
+                        key={i}
+                        type="text"
+                        value={name}
+                        onChange={(e) => setPlayerNames((prev) => prev.map((n, idx) => idx === i ? e.target.value : n))}
+                        placeholder={i < 2 ? `Jugador ${i + 1} (Eq. 1)` : `Jugador ${i + 1} (Eq. 2)`}
+                        disabled={uploading}
+                        className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                      />
+                    ))}
+                  </div>
+                </div>
+
                 {uploading && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
@@ -845,6 +866,26 @@ export default function DashboardPage() {
                     disabled={uploading}
                     className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
                   />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                    <Zap className="h-3 w-3 text-primary" />
+                    Nombres de jugadores <span className="text-xs text-muted-foreground">(opcional · mejora el análisis IA)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {playerNames.map((name, i) => (
+                      <input
+                        key={i}
+                        type="text"
+                        value={name}
+                        onChange={(e) => setPlayerNames((prev) => prev.map((n, idx) => idx === i ? e.target.value : n))}
+                        placeholder={i < 2 ? `Jugador ${i + 1} (Eq. 1)` : `Jugador ${i + 1} (Eq. 2)`}
+                        disabled={uploading}
+                        className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                      />
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex gap-3">
