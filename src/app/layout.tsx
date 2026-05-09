@@ -29,18 +29,17 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "DeporteVision — Transmisión en Vivo para Deportes de Salón",
+  title: "DeporteVision — La plataforma de análisis para tu club de pádel",
   description:
-    "Retransmite, analiza y entrena. La plataforma definitiva para el deporte de salón: streaming en vivo, vídeo bajo demanda y análisis táctico con IA.",
+    "Ofrecé a tus socios una experiencia profesional. DeporteVision convierte cada partido en tu club en datos reales: grabación automática, análisis con IA y video bajo demanda.",
   keywords: [
-    "deporte de salón",
-    "fútbol sala",
-    "básquet",
-    "balonmano",
-    "voleibol",
+    "pádel",
+    "club de pádel",
+    "análisis deportivo",
     "streaming",
     "análisis IA",
     "DeporteVision",
+    "club deportivo",
   ],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
@@ -55,7 +54,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${bebasNeue.variable} ${dmSans.variable} antialiased bg-[#080A0E] text-[#F0EEE8] font-[family-name:var(--font-body)]`}
+        className={`${geistSans.variable} ${geistMono.variable} ${bebasNeue.variable} ${dmSans.variable} antialiased bg-[#07090D] text-[#EFEDE7] font-[family-name:var(--font-body)]`}
       >
         <AuthProvider>
           <AuthSync />

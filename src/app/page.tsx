@@ -7,11 +7,13 @@ import { FirebaseConfigWarning } from "@/components/FirebaseConfigWarning";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
 import {
   HeroSection,
+  ClientsStrip,
   StatsSection,
-  GallerySection,
-  VideoSection,
-  FeaturesSection,
+  ValueSection,
   HowSection,
+  DemoSection,
+  GallerySection,
+  TestimonialsSection,
   PricingSection,
   CTASection,
 } from "@/components/landing/LandingSections";
@@ -28,11 +30,13 @@ export default function HomePage() {
           <FirebaseConfigWarning />
         </div>
         <HeroSection />
+        <ClientsStrip />
         <StatsSection />
-        <GallerySection />
-        <VideoSection />
-        <FeaturesSection />
+        <ValueSection />
         <HowSection />
+        <DemoSection />
+        <GallerySection />
+        <TestimonialsSection />
         <PricingSection />
         <CTASection />
       </main>
