@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Suspense } from "react";
@@ -52,24 +52,26 @@ function LoginForm() {
   };
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md bg-[#111318] border-[rgba(240,238,232,0.08)] text-[#F0EEE8]">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Iniciar sesión</CardTitle>
-        <CardDescription>
+        <CardTitle className="text-2xl font-[family-name:var(--font-display)] tracking-[0.05em] text-[#F0EEE8]">
+          INICIAR SESIÓN
+        </CardTitle>
+        <p className="text-sm text-[#9B9D9A] font-light">
           Accedé a tu dashboard de análisis deportivo
-        </CardDescription>
+        </p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="bg-[#FF5F5F]/10 border-[#FF5F5F]/30 text-[#FF5F5F]">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-[#9B9D9A] text-xs tracking-[0.1em] uppercase">Email</Label>
             <Input
               id="email"
               type="email"
@@ -79,15 +81,16 @@ function LoginForm() {
               required
               autoComplete="email"
               disabled={loading}
+              className="bg-[#191C23] border-[rgba(240,238,232,0.08)] text-[#F0EEE8] placeholder:text-[#9B9D9A]/50 focus:border-[#C8F73A] focus:ring-[#C8F73A]"
             />
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="text-[#9B9D9A] text-xs tracking-[0.1em] uppercase">Contraseña</Label>
               <Link
                 href="#"
-                className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                className="text-xs text-[#9B9D9A] hover:text-[#C8F73A] transition-colors"
               >
                 ¿Olvidaste tu contraseña?
               </Link>
@@ -102,24 +105,24 @@ function LoginForm() {
                 required
                 autoComplete="current-password"
                 disabled={loading}
-                className="pr-10"
+                className="pr-10 bg-[#191C23] border-[rgba(240,238,232,0.08)] text-[#F0EEE8] placeholder:text-[#9B9D9A]/50 focus:border-[#C8F73A] focus:ring-[#C8F73A]"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9B9D9A] hover:text-[#F0EEE8] transition-colors"
                 tabIndex={-1}
               >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button
+            type="submit"
+            className="w-full bg-[#C8F73A] text-[#080A0E] hover:bg-[#C8F73A]/90 text-[0.85rem] tracking-[0.08em] uppercase font-medium h-11"
+            disabled={loading}
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -132,9 +135,9 @@ function LoginForm() {
         </form>
       </CardContent>
       <CardFooter className="justify-center">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[#9B9D9A]">
           ¿No tenés cuenta?{" "}
-          <Link href="/register" className="text-primary font-medium hover:underline">
+          <Link href="/register" className="text-[#C8F73A] font-medium hover:underline">
             Registrate acá
           </Link>
         </p>
@@ -145,19 +148,14 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#080A0E] px-4">
       <div className="mb-8">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <Eye className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold tracking-tight">
-            DeporteVision <span className="text-primary">AI</span>
-          </span>
+        <Link href="/" className="font-[family-name:var(--font-display)] text-2xl tracking-wider">
+          Deporte<span className="text-[#C8F73A]">Vision</span>
         </Link>
       </div>
 
-      <Suspense fallback={<div className="text-sm text-muted-foreground">Cargando...</div>}>
+      <Suspense fallback={<div className="text-sm text-[#9B9D9A]">Cargando...</div>}>
         <LoginForm />
       </Suspense>
     </div>

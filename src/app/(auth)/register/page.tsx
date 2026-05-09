@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -23,7 +23,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Validaciones en tiempo real
   const passwordMinLength = password.length >= 6;
   const passwordsMatch = password === confirmPassword && password.length > 0;
 
@@ -31,7 +30,6 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
 
-    // Validaciones del cliente
     if (!name.trim()) {
       setError("El nombre es obligatorio.");
       return;
@@ -52,7 +50,6 @@ export default function RegisterPage() {
       router.push("/dashboard");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Error al registrarse";
-      // Traducir errores comunes de Firebase
       if (message.includes("auth/email-already-in-use")) {
         setError("Ya existe una cuenta con este email. ¿Querés iniciar sesión?");
       } else if (message.includes("auth/weak-password")) {
@@ -68,36 +65,33 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 px-4 py-8">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#080A0E] px-4 py-8">
       <div className="mb-8">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <Eye className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold tracking-tight">
-            DeporteVision <span className="text-primary">AI</span>
-          </span>
+        <Link href="/" className="font-[family-name:var(--font-display)] text-2xl tracking-wider">
+          Deporte<span className="text-[#C8F73A]">Vision</span>
         </Link>
       </div>
 
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md bg-[#111318] border-[rgba(240,238,232,0.08)] text-[#F0EEE8]">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Crear cuenta</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-2xl font-[family-name:var(--font-display)] tracking-[0.05em] text-[#F0EEE8]">
+            CREAR CUENTA
+          </CardTitle>
+          <p className="text-sm text-[#9B9D9A] font-light">
             Registrate para empezar a analizar tus partidos
-          </CardDescription>
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <Alert variant="destructive">
+              <Alert variant="destructive" className="bg-[#FF5F5F]/10 border-[#FF5F5F]/30 text-[#FF5F5F]">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="name">Nombre</Label>
+              <Label htmlFor="name" className="text-[#9B9D9A] text-xs tracking-[0.1em] uppercase">Nombre</Label>
               <Input
                 id="name"
                 type="text"
@@ -107,11 +101,12 @@ export default function RegisterPage() {
                 required
                 autoComplete="name"
                 disabled={loading}
+                className="bg-[#191C23] border-[rgba(240,238,232,0.08)] text-[#F0EEE8] placeholder:text-[#9B9D9A]/50 focus:border-[#C8F73A] focus:ring-[#C8F73A]"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-[#9B9D9A] text-xs tracking-[0.1em] uppercase">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -121,11 +116,12 @@ export default function RegisterPage() {
                 required
                 autoComplete="email"
                 disabled={loading}
+                className="bg-[#191C23] border-[rgba(240,238,232,0.08)] text-[#F0EEE8] placeholder:text-[#9B9D9A]/50 focus:border-[#C8F73A] focus:ring-[#C8F73A]"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="text-[#9B9D9A] text-xs tracking-[0.1em] uppercase">Contraseña</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -136,29 +132,23 @@ export default function RegisterPage() {
                   required
                   autoComplete="new-password"
                   disabled={loading}
-                  className="pr-10"
+                  className="pr-10 bg-[#191C23] border-[rgba(240,238,232,0.08)] text-[#F0EEE8] placeholder:text-[#9B9D9A]/50 focus:border-[#C8F73A] focus:ring-[#C8F73A]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9B9D9A] hover:text-[#F0EEE8] transition-colors"
                   tabIndex={-1}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
               {password.length > 0 && (
                 <div className="flex items-center gap-1.5 text-xs">
                   <CheckCircle2
-                    className={`h-3.5 w-3.5 ${
-                      passwordMinLength ? "text-green-600" : "text-muted-foreground/40"
-                    }`}
+                    className={`h-3.5 w-3.5 ${passwordMinLength ? "text-[#C8F73A]" : "text-[#9B9D9A]/40"}`}
                   />
-                  <span className={passwordMinLength ? "text-green-600" : "text-muted-foreground"}>
+                  <span className={passwordMinLength ? "text-[#C8F73A]" : "text-[#9B9D9A]"}>
                     Al menos 6 caracteres
                   </span>
                 </div>
@@ -166,7 +156,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
+              <Label htmlFor="confirmPassword" className="text-[#9B9D9A] text-xs tracking-[0.1em] uppercase">Confirmar contraseña</Label>
               <Input
                 id="confirmPassword"
                 type={showPassword ? "text" : "password"}
@@ -176,22 +166,25 @@ export default function RegisterPage() {
                 required
                 autoComplete="new-password"
                 disabled={loading}
+                className="bg-[#191C23] border-[rgba(240,238,232,0.08)] text-[#F0EEE8] placeholder:text-[#9B9D9A]/50 focus:border-[#C8F73A] focus:ring-[#C8F73A]"
               />
               {confirmPassword.length > 0 && (
                 <div className="flex items-center gap-1.5 text-xs">
                   <CheckCircle2
-                    className={`h-3.5 w-3.5 ${
-                      passwordsMatch ? "text-green-600" : "text-destructive"
-                    }`}
+                    className={`h-3.5 w-3.5 ${passwordsMatch ? "text-[#C8F73A]" : "text-[#FF5F5F]"}`}
                   />
-                  <span className={passwordsMatch ? "text-green-600" : "text-destructive"}>
+                  <span className={passwordsMatch ? "text-[#C8F73A]" : "text-[#FF5F5F]"}>
                     {passwordsMatch ? "Las contraseñas coinciden" : "Las contraseñas no coinciden"}
                   </span>
                 </div>
               )}
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full bg-[#C8F73A] text-[#080A0E] hover:bg-[#C8F73A]/90 text-[0.85rem] tracking-[0.08em] uppercase font-medium h-11"
+              disabled={loading}
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -202,17 +195,17 @@ export default function RegisterPage() {
               )}
             </Button>
 
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-xs text-[#9B9D9A] text-center">
               Al registrarte, aceptás nuestros{" "}
-              <span className="underline cursor-pointer">Términos de servicio</span> y{" "}
-              <span className="underline cursor-pointer">Política de privacidad</span>.
+              <span className="underline cursor-pointer hover:text-[#F0EEE8]">Términos de servicio</span> y{" "}
+              <span className="underline cursor-pointer hover:text-[#F0EEE8]">Política de privacidad</span>.
             </p>
           </form>
         </CardContent>
         <CardFooter className="justify-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-[#9B9D9A]">
             ¿Ya tenés cuenta?{" "}
-            <Link href="/login" className="text-primary font-medium hover:underline">
+            <Link href="/login" className="text-[#C8F73A] font-medium hover:underline">
               Iniciá sesión
             </Link>
           </p>
