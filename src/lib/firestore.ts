@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc, serverTimestamp, collection, addDoc, query, where, orderBy, getDocs } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, isFirebaseConfigured } from "./firebase";
 import type { User, Match } from "@/types";
 
 /**
@@ -10,6 +10,7 @@ export async function createUserDocument(
   name: string,
   email: string
 ): Promise<void> {
+  if (!db) throw new Error("Firestore no está inicializado. Verificá la configuración de Firebase.");
   const userRef = doc(db, "users", uid);
   await setDoc(userRef, {
     uid,
@@ -24,6 +25,7 @@ export async function createUserDocument(
  * Obtiene el perfil de usuario desde Firestore.
  */
 export async function getUserProfile(uid: string): Promise<User | null> {
+  if (!db) return null;
   const userRef = doc(db, "users", uid);
   const userSnap = await getDoc(userRef);
 
@@ -42,6 +44,7 @@ export async function createMatchDocument(
   sport: string,
   videoUrl: string
 ): Promise<string> {
+  if (!db) throw new Error("Firestore no está inicializado. Verificá la configuración de Firebase.");
   const matchesRef = collection(db, "matches");
   const docRef = await addDoc(matchesRef, {
     userId,
@@ -58,6 +61,7 @@ export async function createMatchDocument(
  * Obtiene los partidos de un usuario ordenados por fecha.
  */
 export async function getUserMatches(userId: string): Promise<Match[]> {
+  if (!db) return [];
   const matchesRef = collection(db, "matches");
   const q = query(matchesRef, where("userId", "==", userId), orderBy("createdAt", "desc"));
   const querySnapshot = await getDocs(q);

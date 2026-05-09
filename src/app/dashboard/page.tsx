@@ -208,15 +208,18 @@ export default function DashboardPage() {
     }
   };
 
-  // Validar URL de YouTube
+  // Validar URL de YouTube — acepta formatos amplios (con/sin https, www, m.)
   const isValidYouTubeUrl = useCallback((url: string): boolean => {
+    const trimmed = url.trim();
+    if (!trimmed) return false;
     const patterns = [
-      /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/,
-      /^https?:\/\/(www\.)?youtube\.com\/embed\/[\w-]+/,
-      /^https?:\/\/youtu\.be\/[\w-]+/,
-      /^https?:\/\/(www\.)?youtube\.com\/shorts\/[\w-]+/,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?.*v=[\w-]+/,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/[\w-]+/,
+      /(?:https?:\/\/)?(?:www\.)?youtu\.be\/[\w-]+/,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/[\w-]+/,
+      /(?:https?:\/\/)?(?:m\.)?youtube\.com\/watch\?.*v=[\w-]+/,
     ];
-    return patterns.some((p) => p.test(url.trim()));
+    return patterns.some((p) => p.test(trimmed));
   }, []);
 
   const extractYouTubeId = (url: string): string | null => {
@@ -233,22 +236,39 @@ export default function DashboardPage() {
     return null;
   };
 
+  // Estado para error inline en YouTube tab
+  const [youtubeError, setYoutubeError] = useState<string | null>(null);
+
   const handleYouTubeSubmit = async () => {
-    if (!youtubeUrl.trim() || !user?.uid) return;
+    setYoutubeError(null);
+
+    if (!youtubeUrl.trim()) {
+      setYoutubeError("Pegá una URL de YouTube para continuar.");
+      return;
+    }
+
+    if (!user?.uid) {
+      setYoutubeError("No se detectó usuario. Recargá la página e iniciá sesión de nuevo.");
+      return;
+    }
 
     if (!isFirebaseConfigured) {
+      const msg = "Firebase no está configurado. Configurá las variables de entorno para habilitar esta función.";
+      setYoutubeError(msg);
       toast({
         title: "Firebase no configurado",
-        description: "Configurá las variables de entorno para habilitar esta función.",
+        description: msg,
         variant: "destructive",
       });
       return;
     }
 
     if (!isValidYouTubeUrl(youtubeUrl)) {
+      const msg = "La URL no parece ser de YouTube. Usá un enlace como youtube.com/watch?v=... o youtu.be/...";
+      setYoutubeError(msg);
       toast({
         title: "URL inválida",
-        description: "Pegá una URL válida de YouTube (youtube.com/watch?v=... o youtu.be/...)",
+        description: msg,
         variant: "destructive",
       });
       return;
@@ -258,21 +278,26 @@ export default function DashboardPage() {
 
     try {
       const title = matchTitle || `Partido ${new Date().toLocaleDateString("es-AR")}`;
-      await createMatchDocument(user.uid, title, "padel", youtubeUrl.trim());
+      console.log("[YouTube] Creando partido para usuario:", user.uid, "con URL:", youtubeUrl.trim());
+      const matchId = await createMatchDocument(user.uid, title, "padel", youtubeUrl.trim());
+      console.log("[YouTube] Partido creado con ID:", matchId);
 
       toast({
-        title: "Video de YouTube agregado",
+        title: "✅ Video de YouTube agregado",
         description: `"${title}" se agregó correctamente y está listo para procesar.`,
       });
 
       // Resetear estado
       setYoutubeUrl("");
       setMatchTitle("");
+      setYoutubeError(null);
 
       // Recargar partidos
       await loadMatches();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Error desconocido";
+      console.error("[YouTube] Error al crear partido:", error);
+      const message = error instanceof Error ? error.message : "Error desconocido al guardar el partido.";
+      setYoutubeError(message);
       toast({
         title: "Error al agregar el video",
         description: message,
@@ -363,6 +388,7 @@ export default function DashboardPage() {
     setSelectedFile(null);
     setMatchTitle("");
     setYoutubeUrl("");
+    setYoutubeError(null);
     setUploadProgress(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -612,9 +638,15 @@ export default function DashboardPage() {
                   <div className="relative">
                     <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
-                      type="url"
+                      type="text"
                       value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      onChange={(e) => { setYoutubeUrl(e.target.value); setYoutubeError(null); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !uploading) {
+                          e.preventDefault();
+                          handleYouTubeSubmit();
+                        }
+                      }}
                       placeholder="https://www.youtube.com/watch?v=..."
                       disabled={uploading}
                       className="w-full pl-10 pr-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
@@ -623,7 +655,7 @@ export default function DashboardPage() {
                   {youtubeUrl.trim() && !isValidYouTubeUrl(youtubeUrl) && (
                     <p className="text-xs text-destructive mt-1 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      URL de YouTube no válida. Verificá el formato.
+                      La URL no parece ser de YouTube. Verificá que sea un enlace válido.
                     </p>
                   )}
                   {youtubeUrl.trim() && isValidYouTubeUrl(youtubeUrl) && (
@@ -634,10 +666,18 @@ export default function DashboardPage() {
                   )}
                 </div>
 
+                {/* Error inline */}
+                {youtubeError && (
+                  <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20">
+                    <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-sm text-destructive">{youtubeError}</p>
+                  </div>
+                )}
+
                 {/* Campo de título */}
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-1 block">
-                    Nombre del partido
+                    Nombre del partido (opcional)
                   </label>
                   <input
                     type="text"
@@ -653,13 +693,13 @@ export default function DashboardPage() {
                 <div className="flex gap-3">
                   <Button
                     onClick={handleYouTubeSubmit}
-                    disabled={uploading || !youtubeUrl.trim() || !isValidYouTubeUrl(youtubeUrl)}
+                    disabled={uploading}
                     className="flex-1"
                   >
                     {uploading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Agregando...
+                        Agregando video...
                       </>
                     ) : (
                       <>
