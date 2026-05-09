@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { initializeApp, getApps, getApp, cert } from "firebase/app";
-import { getFirestore, doc, updateDoc, setDoc, serverTimestamp, collection, addDoc } from "firebase/firestore";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
-// ─── Firebase Admin-style init (server-side) ────────────────────────────
-// Usamos el client SDK en el servidor porque firebase-admin requiere
-// un archivo de credenciales JSON que no tenemos en Vercel.
+// ─── Firebase server-side init ───────────────────────────────────────────
 let db: ReturnType<typeof getFirestore> | null = null;
 
 function getServerDb() {
@@ -39,7 +37,6 @@ function getServerDb() {
 }
 
 // ─── Generador de análisis de pádel ─────────────────────────────────────
-// (Duplicado del lado del servidor para no importar código del cliente)
 
 const NOMBRES = ["Martín","Gonzalo","Facundo","Tomás","Santiago","Nicolás","Mateo","Rafael","Esteban","Diego","Javier","Lucas","Mariano","Pablo","Alejandro"];
 const APELLIDOS = ["García","Rodríguez","Martínez","López","González","Hernández","Díaz","Torres","Romero","Ruiz","Sánchez","Pérez","Fernández","Suárez","Alvarez"];
@@ -162,8 +159,12 @@ function generateAnalysis() {
     { label:"Efectividad Resto", value:"Puntos ganados", team1Value:teamStats[0].returnWinRate, team2Value:teamStats[1].returnWinRate, higherIsBetter:true },
   ];
 
+  // ⚠️ IMPORTANTE: Convertir sets de [[6,4],[7,5]] a [{t1:6,t2:4},{t1:7,t2:5}]
+  // Firestore NO soporta arrays anidados (array de arrays)
+  const firestoreSets = sets.map(s => ({ t1: s[0], t2: s[1] }));
+
   return {
-    result: { sets, winner, duration: `${hours}h ${mins}min`, totalPoints: sets.reduce((a,s)=>a+s[0]+s[1],0) },
+    result: { sets: firestoreSets, winner, duration: `${hours}h ${mins}min`, totalPoints: sets.reduce((a,s)=>a+s[0]+s[1],0) },
     teamStats,
     playerStats,
     shotHeatmap: heatmap,
@@ -199,7 +200,7 @@ export async function POST(request: NextRequest) {
     // 2. Simular tiempo de procesamiento (como si procesara el video)
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // 3. Generar análisis
+    // 3. Generar análisis (ya en formato Firestore-compatible)
     const analysis = generateAnalysis();
     const analysisId = `analysis-${Date.now()}`;
     console.log("[API/analyze] Análisis generado, guardando en Firestore...");
