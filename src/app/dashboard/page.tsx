@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -20,7 +19,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar } from "@/components/ui/avatar";
+import { AvatarFallback } from "@/components/ui/avatar";
 import {
   Eye,
   Upload,
@@ -37,38 +37,38 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  X,
+  FileVideo,
+  CloudUpload,
 } from "lucide-react";
-import type { MatchStatus } from "@/types";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { storage, isFirebaseConfigured } from "@/lib/firebase";
+import { createMatchDocument, getUserMatches } from "@/lib/firestore";
+import { useToast } from "@/hooks/use-toast";
+import type { Match, MatchStatus } from "@/types";
 
-// ─── Datos placeholder para el dashboard ─────────────────────────────
+// ─── Datos placeholder para cuando no hay partidos reales ─────────
 const placeholderMatches = [
   {
-    id: "1",
+    id: "demo-1",
     title: "Partido vs Juan & Marcos",
     sport: "padel" as const,
     status: "analyzed" as MatchStatus,
-    createdAt: "Hace 2 días",
+    createdAt: null as unknown as Match["createdAt"],
   },
   {
-    id: "2",
+    id: "demo-2",
     title: "Partido vs Equipo Rojo",
     sport: "padel" as const,
     status: "processing" as MatchStatus,
-    createdAt: "Hace 5 horas",
+    createdAt: null as unknown as Match["createdAt"],
   },
   {
-    id: "3",
+    id: "demo-3",
     title: "Partido vs Luis & Pedro",
     sport: "padel" as const,
     status: "uploaded" as MatchStatus,
-    createdAt: "Hace 1 hora",
-  },
-  {
-    id: "4",
-    title: "Partido vs Ana & Carla",
-    sport: "padel" as const,
-    status: "error" as MatchStatus,
-    createdAt: "Hace 3 días",
+    createdAt: null as unknown as Match["createdAt"],
   },
 ];
 
@@ -140,15 +140,155 @@ function getStatusBadge(status: MatchStatus) {
 // ─── Componente principal ─────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, userProfile, signOut } = useAuth();
-  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUploadVideo = () => {
-    setUploadingVideo(true);
-    // Simulación de upload
-    setTimeout(() => {
-      setUploadingVideo(false);
-    }, 2000);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [matchTitle, setMatchTitle] = useState("");
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+
+  // Cargar partidos reales del usuario
+  useEffect(() => {
+    if (user?.uid && isFirebaseConfigured) {
+      loadMatches();
+    }
+  }, [user?.uid]);
+
+  const loadMatches = async () => {
+    if (!user?.uid) return;
+    setLoadingMatches(true);
+    try {
+      const userMatches = await getUserMatches(user.uid);
+      setMatches(userMatches);
+    } catch (error) {
+      console.error("Error cargando partidos:", error);
+    } finally {
+      setLoadingMatches(false);
+    }
   };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith("video/")) {
+      toast({
+        title: "Archivo inválido",
+        description: "Por favor seleccioná un archivo de video (MP4, MOV, AVI, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validar tamaño (máximo 500MB)
+    if (file.size > 500 * 1024 * 1024) {
+      toast({
+        title: "Archivo muy grande",
+        description: "El video no puede superar los 500MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedFile(file);
+    // Auto-generar título si está vacío
+    if (!matchTitle) {
+      const now = new Date();
+      setMatchTitle(`Partido ${now.toLocaleDateString("es-AR")}`);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile || !user?.uid) return;
+
+    if (!isFirebaseConfigured || !storage) {
+      toast({
+        title: "Firebase no configurado",
+        description: "Configurá las variables de entorno para habilitar la subida de videos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // Crear referencia en Firebase Storage
+      const timestamp = Date.now();
+      const sanitizedName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storageRef = ref(storage, `videos/${user.uid}/${timestamp}_${sanitizedName}`);
+
+      // Subir con progreso
+      const uploadTask = uploadBytesResumable(storageRef, selectedFile);
+
+      const downloadUrl = await new Promise<string>((resolve, reject) => {
+        uploadTask.on(
+          "state_changed",
+          (snapshot) => {
+            const progress = Math.round(
+              (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+            );
+            setUploadProgress(progress);
+          },
+          (error) => {
+            console.error("Error subiendo video:", error);
+            reject(error);
+          },
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          }
+        );
+      });
+
+      // Crear documento del partido en Firestore
+      const title = matchTitle || `Partido ${new Date().toLocaleDateString("es-AR")}`;
+      await createMatchDocument(user.uid, title, "padel", downloadUrl);
+
+      toast({
+        title: "Video subido correctamente",
+        description: `"${title}" se subió y está listo para procesar.`,
+      });
+
+      // Resetear estado
+      setSelectedFile(null);
+      setMatchTitle("");
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
+      // Recargar partidos
+      await loadMatches();
+    } catch (error: unknown) {
+      console.error("Error en upload:", error);
+      const message = error instanceof Error ? error.message : "Error desconocido";
+      toast({
+        title: "Error al subir el video",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const cancelUpload = () => {
+    setSelectedFile(null);
+    setMatchTitle("");
+    setUploadProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const displayMatches = matches.length > 0 ? matches : placeholderMatches;
+  const isUsingPlaceholders = matches.length === 0;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -223,35 +363,121 @@ export default function DashboardPage() {
 
         {/* Upload video card */}
         <Card className="mb-8 border-dashed border-2 hover:border-primary/50 transition-colors">
-          <CardContent className="flex flex-col md:flex-row items-center justify-between gap-4 py-6">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Video className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Subir nuevo video</h3>
-                <p className="text-sm text-muted-foreground">
-                  Cargá el video de tu partido para análisis automático con IA
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={handleUploadVideo}
-              disabled={uploadingVideo}
-              className="shrink-0"
-            >
-              {uploadingVideo ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Subiendo...
-                </>
-              ) : (
-                <>
+          <CardContent className="py-6">
+            {/* Input oculto para seleccionar archivo */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            {!selectedFile ? (
+              /* Estado inicial: botón para seleccionar archivo */
+              <div
+                className="flex flex-col md:flex-row items-center justify-between gap-4 cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CloudUpload className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Subir nuevo video</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Cargá el video de tu partido para análisis automático con IA
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      MP4, MOV, AVI · Máximo 500MB
+                    </p>
+                  </div>
+                </div>
+                <Button className="shrink-0" disabled={uploading}>
                   <Upload className="mr-2 h-4 w-4" />
-                  Subir video
-                </>
-              )}
-            </Button>
+                  Seleccionar video
+                </Button>
+              </div>
+            ) : (
+              /* Estado: archivo seleccionado, listo para subir */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <FileVideo className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{selectedFile.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(selectedFile.size / (1024 * 1024)).toFixed(1)} MB
+                      </p>
+                    </div>
+                  </div>
+                  {!uploading && (
+                    <Button variant="ghost" size="icon" onClick={cancelUpload} className="h-8 w-8">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Campo de título */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block">
+                    Nombre del partido
+                  </label>
+                  <input
+                    type="text"
+                    value={matchTitle}
+                    onChange={(e) => setMatchTitle(e.target.value)}
+                    placeholder="Ej: Partido vs Juan & Marcos"
+                    disabled={uploading}
+                    className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                  />
+                </div>
+
+                {/* Barra de progreso */}
+                {uploading && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Subiendo video...</span>
+                      <span className="font-medium">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Botones de acción */}
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleUpload}
+                    disabled={uploading}
+                    className="flex-1"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Subiendo... {uploadProgress}%
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload className="mr-2 h-4 w-4" />
+                        Subir y analizar
+                      </>
+                    )}
+                  </Button>
+                  {!uploading && (
+                    <Button variant="outline" onClick={cancelUpload}>
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -282,73 +508,84 @@ export default function DashboardPage() {
             </Button>
           </div>
 
-          <div className="space-y-3">
-            {placeholderMatches.map((match) => (
-              <Card key={match.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="flex items-center justify-between py-4 px-6">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                      {match.status === "analyzed" ? (
-                        <BarChart3 className="h-5 w-5 text-green-600" />
-                      ) : match.status === "processing" ? (
-                        <Loader2 className="h-5 w-5 text-yellow-600 animate-spin" />
-                      ) : match.status === "error" ? (
-                        <AlertCircle className="h-5 w-5 text-destructive" />
-                      ) : (
-                        <Play className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-sm">{match.title}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {match.createdAt}
-                        </span>
-                        <Badge variant="outline" className="text-xs py-0 px-1.5">
-                          {match.sport}
-                        </Badge>
+          {loadingMatches ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Cargando partidos...</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {displayMatches.map((match) => (
+                <Card key={match.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="flex items-center justify-between py-4 px-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                        {match.status === "analyzed" ? (
+                          <BarChart3 className="h-5 w-5 text-green-600" />
+                        ) : match.status === "processing" ? (
+                          <Loader2 className="h-5 w-5 text-yellow-600 animate-spin" />
+                        ) : match.status === "error" ? (
+                          <AlertCircle className="h-5 w-5 text-destructive" />
+                        ) : (
+                          <Play className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-sm">{match.title}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {match.createdAt
+                              ? new Date(match.createdAt as unknown as number).toLocaleDateString("es-AR")
+                              : "Reciente"}
+                          </span>
+                          <Badge variant="outline" className="text-xs py-0 px-1.5">
+                            {match.sport}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-3">
-                    {getStatusBadge(match.status)}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {match.status === "analyzed" && (
+                    <div className="flex items-center gap-3">
+                      {getStatusBadge(match.status)}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {match.status === "analyzed" && (
+                            <DropdownMenuItem className="cursor-pointer">
+                              <BarChart3 className="mr-2 h-4 w-4" />
+                              Ver análisis
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem className="cursor-pointer">
-                            <BarChart3 className="mr-2 h-4 w-4" />
-                            Ver análisis
+                            <Eye className="mr-2 h-4 w-4" />
+                            Ver detalles
                           </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem className="cursor-pointer">
-                          <Eye className="mr-2 h-4 w-4" />
-                          Ver detalles
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
-                          Eliminar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive">
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
 
           {/* Empty state hint */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              Estos son datos de ejemplo. Subí tu primer video para comenzar a ver análisis reales.
-            </p>
-          </div>
+          {isUsingPlaceholders && (
+            <div className="mt-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                Estos son datos de ejemplo. Subí tu primer video para comenzar a ver análisis reales.
+              </p>
+            </div>
+          )}
         </div>
       </main>
     </div>
