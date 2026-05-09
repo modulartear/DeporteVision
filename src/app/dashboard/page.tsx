@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,8 @@ import {
   X,
   FileVideo,
   CloudUpload,
+  Link as LinkIcon,
+  Youtube,
 } from "lucide-react";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { storage, isFirebaseConfigured } from "@/lib/firebase";
@@ -150,6 +152,10 @@ export default function DashboardPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
 
+  // YouTube URL state
+  const [uploadMode, setUploadMode] = useState<"file" | "youtube">("file");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+
   // Cargar partidos reales del usuario
   useEffect(() => {
     if (user?.uid && isFirebaseConfigured) {
@@ -199,6 +205,81 @@ export default function DashboardPage() {
     if (!matchTitle) {
       const now = new Date();
       setMatchTitle(`Partido ${now.toLocaleDateString("es-AR")}`);
+    }
+  };
+
+  // Validar URL de YouTube
+  const isValidYouTubeUrl = useCallback((url: string): boolean => {
+    const patterns = [
+      /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/,
+      /^https?:\/\/(www\.)?youtube\.com\/embed\/[\w-]+/,
+      /^https?:\/\/youtu\.be\/[\w-]+/,
+      /^https?:\/\/(www\.)?youtube\.com\/shorts\/[\w-]+/,
+    ];
+    return patterns.some((p) => p.test(url.trim()));
+  }, []);
+
+  const extractYouTubeId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=)([\w-]+)/,
+      /(?:youtube\.com\/embed\/)([\w-]+)/,
+      /(?:youtu\.be\/)([\w-]+)/,
+      /(?:youtube\.com\/shorts\/)([\w-]+)/,
+    ];
+    for (const p of patterns) {
+      const match = url.match(p);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const handleYouTubeSubmit = async () => {
+    if (!youtubeUrl.trim() || !user?.uid) return;
+
+    if (!isFirebaseConfigured) {
+      toast({
+        title: "Firebase no configurado",
+        description: "Configurá las variables de entorno para habilitar esta función.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isValidYouTubeUrl(youtubeUrl)) {
+      toast({
+        title: "URL inválida",
+        description: "Pegá una URL válida de YouTube (youtube.com/watch?v=... o youtu.be/...)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      const title = matchTitle || `Partido ${new Date().toLocaleDateString("es-AR")}`;
+      await createMatchDocument(user.uid, title, "padel", youtubeUrl.trim());
+
+      toast({
+        title: "Video de YouTube agregado",
+        description: `"${title}" se agregó correctamente y está listo para procesar.`,
+      });
+
+      // Resetear estado
+      setYoutubeUrl("");
+      setMatchTitle("");
+
+      // Recargar partidos
+      await loadMatches();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Error desconocido";
+      toast({
+        title: "Error al agregar el video",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -281,6 +362,7 @@ export default function DashboardPage() {
   const cancelUpload = () => {
     setSelectedFile(null);
     setMatchTitle("");
+    setYoutubeUrl("");
     setUploadProgress(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -373,8 +455,32 @@ export default function DashboardPage() {
               className="hidden"
             />
 
-            {!selectedFile ? (
-              /* Estado inicial: botón para seleccionar archivo */
+            {/* Tabs: Archivo / YouTube */}
+            <div className="flex gap-0 border-b border-border mb-5">
+              <button
+                onClick={() => { setUploadMode("file"); cancelUpload(); }}
+                className={`shrink-0 px-5 py-2.5 text-sm font-medium tracking-wide transition-colors relative border-none bg-transparent cursor-pointer ${
+                  uploadMode === "file" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Upload className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+                Subir archivo
+                {uploadMode === "file" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+              </button>
+              <button
+                onClick={() => { setUploadMode("youtube"); cancelUpload(); }}
+                className={`shrink-0 px-5 py-2.5 text-sm font-medium tracking-wide transition-colors relative border-none bg-transparent cursor-pointer ${
+                  uploadMode === "youtube" ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Youtube className="h-4 w-4 inline mr-1.5 -mt-0.5" />
+                URL de YouTube
+                {uploadMode === "youtube" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
+              </button>
+            </div>
+
+            {/* ── Tab: Subir archivo ── */}
+            {uploadMode === "file" && !selectedFile && (
               <div
                 className="flex flex-col md:flex-row items-center justify-between gap-4 cursor-pointer"
                 onClick={() => fileInputRef.current?.click()}
@@ -384,7 +490,7 @@ export default function DashboardPage() {
                     <CloudUpload className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Subir nuevo video</h3>
+                    <h3 className="font-semibold">Subir video desde tu dispositivo</h3>
                     <p className="text-sm text-muted-foreground">
                       Cargá el video de tu partido para análisis automático con IA
                     </p>
@@ -398,8 +504,9 @@ export default function DashboardPage() {
                   Seleccionar video
                 </Button>
               </div>
-            ) : (
-              /* Estado: archivo seleccionado, listo para subir */
+            )}
+
+            {uploadMode === "file" && selectedFile && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -473,6 +580,97 @@ export default function DashboardPage() {
                   {!uploading && (
                     <Button variant="outline" onClick={cancelUpload}>
                       Cancelar
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Tab: YouTube URL ── */}
+            {uploadMode === "youtube" && (
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-500 shrink-0">
+                    <Youtube className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Agregar video de YouTube</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Si ya subiste el video a YouTube, pegá el enlace acá y lo procesamos desde ahí.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Formatos: youtube.com/watch?v=... · youtu.be/... · youtube.com/shorts/...
+                    </p>
+                  </div>
+                </div>
+
+                {/* Campo de URL */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block">
+                    URL del video
+                  </label>
+                  <div className="relative">
+                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="url"
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      disabled={uploading}
+                      className="w-full pl-10 pr-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                    />
+                  </div>
+                  {youtubeUrl.trim() && !isValidYouTubeUrl(youtubeUrl) && (
+                    <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      URL de YouTube no válida. Verificá el formato.
+                    </p>
+                  )}
+                  {youtubeUrl.trim() && isValidYouTubeUrl(youtubeUrl) && (
+                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      URL válida — Video ID: {extractYouTubeId(youtubeUrl)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Campo de título */}
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-1 block">
+                    Nombre del partido
+                  </label>
+                  <input
+                    type="text"
+                    value={matchTitle}
+                    onChange={(e) => setMatchTitle(e.target.value)}
+                    placeholder="Ej: Partido vs Juan & Marcos"
+                    disabled={uploading}
+                    className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                  />
+                </div>
+
+                {/* Botones */}
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleYouTubeSubmit}
+                    disabled={uploading || !youtubeUrl.trim() || !isValidYouTubeUrl(youtubeUrl)}
+                    className="flex-1"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Agregando...
+                      </>
+                    ) : (
+                      <>
+                        <Youtube className="mr-2 h-4 w-4" />
+                        Agregar video de YouTube
+                      </>
+                    )}
+                  </Button>
+                  {!uploading && (
+                    <Button variant="outline" onClick={cancelUpload}>
+                      Limpiar
                     </Button>
                   )}
                 </div>
