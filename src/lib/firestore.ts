@@ -77,20 +77,23 @@ export async function updateMatchStatus(
 
 /**
  * Convierte el analysis a un formato compatible con Firestore.
- * Firestore NO soporta arrays anidados (ej: [[6,4],[7,5]]),
- * así que convertimos las tuplas [number, number] a objetos {t1, t2}.
+ *
+ * Firestore NO soporta arrays anidados (ej: [[6,4],[7,5]]).
+ * La solución más robusta es serializar todo el análisis como JSON string,
+ * ya que los datos de análisis son complejos y pueden contener
+ * estructuras anidadas de varios niveles.
+ *
+ * Esto evita completamente los errores de "Nested arrays are not supported"
+ * y simplifica el mantenimiento cuando se agregan nuevos campos.
  */
 function analysisToFirestore(analysis: MatchAnalysis): Record<string, unknown> {
-  return {
+  // Serializar todo el análisis como JSON string
+  // Firestore soporta strings sin problemas
+  const serialized = JSON.stringify({
     id: analysis.id,
     matchId: analysis.matchId,
-    // Convertir sets de [[6,4],[7,5]] a [{t1:6,t2:4},{t1:7,t2:5}]
-    result: {
-      ...analysis.result,
-      sets: analysis.result.sets.map((s) => ({ t1: s[0], t2: s[1] })),
-    },
-    // Convertir teamStats de tupla a array normal (Firestore no soporta tuplas)
-    teamStats: analysis.teamStats.map((ts) => ({ ...ts })),
+    result: analysis.result,
+    teamStats: analysis.teamStats,
     playerStats: analysis.playerStats,
     shotHeatmap: analysis.shotHeatmap,
     possessionBySet: analysis.possessionBySet,
@@ -98,18 +101,39 @@ function analysisToFirestore(analysis: MatchAnalysis): Record<string, unknown> {
     clips: analysis.clips,
     aiSummary: analysis.aiSummary,
     keyMetrics: analysis.keyMetrics,
+  });
+
+  return {
+    id: analysis.id,
+    matchId: analysis.matchId,
+    // Guardamos los datos serializados como JSON string
+    data: serialized,
+    // Campos de búsqueda/filtering a nivel raíz
     createdAt: serverTimestamp(),
   };
 }
 
 /**
  * Convierte datos leidos de Firestore de vuelta al formato de la app.
- * Convierte los sets de [{t1:6,t2:4}] a [[6,4]]
+ * Deserializa el JSON string guardado en el campo "data".
  */
 function firestoreToAnalysis(data: Record<string, unknown>): MatchAnalysis {
   const raw = data as Record<string, any>;
 
-  // Convertir sets de [{t1:6,t2:4}] de vuelta a [[6,4]]
+  // Si tiene el campo "data" serializado, deserializarlo
+  if (raw.data && typeof raw.data === "string") {
+    try {
+      const parsed = JSON.parse(raw.data);
+      return {
+        ...parsed,
+        createdAt: raw.createdAt,
+      } as MatchAnalysis;
+    } catch (e) {
+      console.error("[Firestore] Error deserializando análisis:", e);
+    }
+  }
+
+  // Fallback: formato anterior (por si hay datos guardados con el formato viejo)
   const sets: [number, number][] = (raw.result?.sets || []).map(
     (s: { t1: number; t2: number } | [number, number]) =>
       Array.isArray(s) ? s : [s.t1, s.t2]
@@ -123,7 +147,7 @@ function firestoreToAnalysis(data: Record<string, unknown>): MatchAnalysis {
       ...raw.result,
       sets,
     },
-    teamStats: raw.teamStats,
+    teamStats: raw.teamStats || [],
     playerStats: raw.playerStats || [],
     shotHeatmap: raw.shotHeatmap || [],
     possessionBySet: raw.possessionBySet || [],
@@ -136,6 +160,7 @@ function firestoreToAnalysis(data: Record<string, unknown>): MatchAnalysis {
 
 /**
  * Guarda el análisis completo de un partido en Firestore.
+ * Serializa como JSON string para evitar problemas de tipos de Firestore.
  * También actualiza el estado del partido a "analyzed".
  */
 export async function saveMatchAnalysis(
@@ -144,7 +169,7 @@ export async function saveMatchAnalysis(
 ): Promise<void> {
   if (!db) throw new Error("Firestore no está inicializado.");
 
-  // Convertir a formato Firestore-compatible
+  // Convertir a formato Firestore-compatible (JSON serializado)
   const firestoreData = analysisToFirestore(analysis);
 
   // Guardar análisis en subcolección
@@ -235,4 +260,86 @@ export async function deleteMatch(matchId: string): Promise<void> {
     status: "deleted",
     deletedAt: serverTimestamp(),
   });
+}
+
+// ─── Caché local de análisis (localStorage) ────────────────────────────
+// Para evitar depender exclusivamente de Firestore, guardamos los análisis
+// generados localmente en localStorage. Esto permite que el flujo funcione
+// incluso si Firestore tiene problemas de permisos o conectividad.
+
+const ANALYSIS_CACHE_KEY = "deportevision_analysis_cache";
+
+/**
+ * Guarda un análisis en la caché local (localStorage).
+ */
+export function cacheAnalysisLocally(matchId: string, analysis: MatchAnalysis): void {
+  try {
+    const cache = getLocalAnalysisCache();
+    cache[matchId] = {
+      ...analysis,
+      // Asegurar que createdAt sea serializable
+      createdAt: analysis.createdAt ? null : null,
+    };
+    localStorage.setItem(ANALYSIS_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn("[Cache] No se pudo guardar en localStorage:", e);
+  }
+}
+
+/**
+ * Obtiene un análisis de la caché local.
+ */
+export function getCachedAnalysis(matchId: string): MatchAnalysis | null {
+  try {
+    const cache = getLocalAnalysisCache();
+    const cached = cache[matchId];
+    return cached || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Obtiene toda la caché local de análisis.
+ */
+function getLocalAnalysisCache(): Record<string, MatchAnalysis> {
+  try {
+    const raw = localStorage.getItem(ANALYSIS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Guarda el estado del match en caché local.
+ */
+const MATCH_CACHE_KEY = "deportevision_match_cache";
+
+export function cacheMatchLocally(match: Match): void {
+  try {
+    const cache = getLocalMatchCache();
+    cache[match.id] = { ...match, createdAt: null as any };
+    localStorage.setItem(MATCH_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn("[Cache] No se pudo guardar match en localStorage:", e);
+  }
+}
+
+export function getCachedMatch(matchId: string): Match | null {
+  try {
+    const cache = getLocalMatchCache();
+    return cache[matchId] || null;
+  } catch {
+    return null;
+  }
+}
+
+function getLocalMatchCache(): Record<string, Match> {
+  try {
+    const raw = localStorage.getItem(MATCH_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
 }

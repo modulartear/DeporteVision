@@ -48,10 +48,13 @@ import {
   getUserMatches,
   updateMatchStatus,
   saveMatchAnalysis,
+  cacheAnalysisLocally,
+  getCachedAnalysis,
+  cacheMatchLocally,
 } from "@/lib/firestore";
 import { generatePadelAnalysis } from "@/lib/padel-analysis";
 import { useToast } from "@/hooks/use-toast";
-import type { Match, MatchStatus } from "@/types";
+import type { Match, MatchStatus, MatchAnalysis } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 function getStatusBadge(status: MatchStatus) {
@@ -102,6 +105,9 @@ export default function DashboardPage() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [analyzingMatchId, setAnalyzingMatchId] = useState<string | null>(null);
 
+  // Track matches that were just analyzed locally so we don't overwrite their status
+  const locallyAnalyzed = useRef<Set<string>>(new Set());
+
   // YouTube URL state
   const [uploadMode, setUploadMode] = useState<"file" | "youtube">("file");
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -114,16 +120,31 @@ export default function DashboardPage() {
     }
   }, [user?.uid]);
 
-  // Polling: actualizar partidos cada 5s si hay alguno en "processing"
+  // Polling: actualizar partidos cada 5s si hay alguno en "processing" que wasn't locally analyzed
   useEffect(() => {
-    const hasProcessing = matches.some((m) => m.status === "processing");
+    const hasProcessing = matches.some(
+      (m) => m.status === "processing" && !locallyAnalyzed.current.has(m.id)
+    );
     if (!hasProcessing || !user?.uid) return;
 
     const interval = setInterval(async () => {
       try {
         if (isFirebaseConfigured) {
           const userMatches = await getUserMatches(user.uid);
-          setMatches(userMatches);
+          // Merge: don't overwrite locally analyzed matches
+          setMatches((prev) => {
+            const merged = userMatches.map((fm) => {
+              if (locallyAnalyzed.current.has(fm.id) && fm.status !== "analyzed") {
+                // Keep our local "analyzed" status
+                const localMatch = prev.find((m) => m.id === fm.id);
+                if (localMatch?.status === "analyzed") {
+                  return { ...fm, status: "analyzed" as MatchStatus };
+                }
+              }
+              return fm;
+            });
+            return merged;
+          });
         }
       } catch {
         // Silenciar errores de polling
@@ -139,10 +160,23 @@ export default function DashboardPage() {
     try {
       if (isFirebaseConfigured) {
         const userMatches = await getUserMatches(user.uid);
-        setMatches(userMatches);
+        // Merge with locally analyzed matches
+        setMatches((prev) => {
+          const merged = userMatches.map((fm) => {
+            if (locallyAnalyzed.current.has(fm.id) && fm.status !== "analyzed") {
+              const localMatch = prev.find((m) => m.id === fm.id);
+              if (localMatch?.status === "analyzed") {
+                return { ...fm, status: "analyzed" as MatchStatus };
+              }
+            }
+            return fm;
+          });
+          return merged;
+        });
       }
     } catch (error) {
       console.error("Error cargando partidos:", error);
+      // Don't clear local matches on error
     } finally {
       setLoadingMatches(false);
     }
@@ -208,8 +242,9 @@ export default function DashboardPage() {
   /**
    * Ejecuta el analisis completo del partido.
    * Funciona tanto con Firestore como sin el (fallback local).
+   * SIEMPRE genera el analisis y lo guarda en localStorage.
    */
-  const runAnalysis = async (matchId: string): Promise<boolean> => {
+  const runAnalysis = async (matchId: string): Promise<{ success: boolean; analysis: MatchAnalysis | null }> => {
     console.log("[Analisis] Iniciando para match:", matchId);
 
     try {
@@ -226,23 +261,31 @@ export default function DashboardPage() {
       // 2. Simular tiempo de procesamiento IA
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      // 3. Generar analisis
+      // 3. Generar analisis SIEMPRE
       const analysis = generatePadelAnalysis(matchId);
-      console.log("[Analisis] Datos generados, guardando...");
+      console.log("[Analisis] Datos generados correctamente");
 
-      // 4. Intentar guardar en Firestore
+      // 4. SIEMPRE guardar en caché local (localStorage)
+      cacheAnalysisLocally(matchId, analysis);
+      console.log("[Analisis] Guardado en caché local");
+
+      // 5. Intentar guardar en Firestore (best effort)
       if (isFirebaseConfigured) {
         try {
           await saveMatchAnalysis(matchId, analysis);
-          console.log("[Analisis] Guardado en Firestore. Estado -> analyzed");
+          console.log("[Analisis] Guardado en Firestore");
         } catch (err) {
-          console.warn("[Analisis] No se pudo guardar en Firestore, usando estado local:", err);
+          console.warn("[Analisis] No se pudo guardar en Firestore (usando caché local):", err);
+          // Intentar al menos actualizar el estado a "analyzed"
+          try {
+            await updateMatchStatus(matchId, "analyzed");
+          } catch {
+            console.warn("[Analisis] Tampoco se pudo actualizar estado en Firestore");
+          }
         }
-      } else {
-        console.log("[Analisis] Firebase no configurado, analisis generado localmente");
       }
 
-      return true;
+      return { success: true, analysis };
     } catch (error) {
       console.error("[Analisis] Error:", error);
       if (isFirebaseConfigured) {
@@ -252,7 +295,7 @@ export default function DashboardPage() {
           // Si esto tambien falla, no podemos hacer mucho mas
         }
       }
-      return false;
+      return { success: false, analysis: null };
     }
   };
 
@@ -293,37 +336,61 @@ export default function DashboardPage() {
       createdAt: new Date() as unknown as Match["createdAt"],
     };
     setMatches((prev) => [newMatch, ...prev]);
+    cacheMatchLocally(newMatch);
 
     // 3. Ejecutar analisis en segundo plano
     setAnalyzingMatchId(matchId);
-    const success = await runAnalysis(matchId);
+    const result = await runAnalysis(matchId);
     setAnalyzingMatchId(null);
 
-    // 4. Actualizar estado local
-    setMatches((prev) =>
-      prev.map((m) =>
-        m.id === matchId
-          ? { ...m, status: success ? "analyzed" : "error" }
-          : m
-      )
-    );
+    // 4. Actualizar estado local SIEMPRE - no importa si Firestore falló
+    if (result.success && result.analysis) {
+      locallyAnalyzed.current.add(matchId);
+      setMatches((prev) =>
+        prev.map((m) =>
+          m.id === matchId
+            ? { ...m, status: "analyzed" as MatchStatus }
+            : m
+        )
+      );
 
-    // 5. Recargar desde Firestore para tener datos actualizados
-    if (isFirebaseConfigured) {
-      await loadMatches();
-    }
-
-    if (success) {
       toast({
         title: "Analisis completado",
         description: title + " fue analizado correctamente. Hace click para ver los resultados.",
       });
     } else {
+      setMatches((prev) =>
+        prev.map((m) =>
+          m.id === matchId
+            ? { ...m, status: "error" as MatchStatus }
+            : m
+        )
+      );
+
       toast({
         title: "Error en el analisis",
         description: "No se pudo analizar el partido. Intenta de nuevo desde el historial.",
         variant: "destructive",
       });
+    }
+
+    // 5. Recargar desde Firestore SOLO para sincronizar datos que sí se guardaron
+    // Pero NO sobreescribir el estado de matches que acabamos de analizar localmente
+    if (isFirebaseConfigured) {
+      try {
+        const userMatches = await getUserMatches(user.uid);
+        setMatches((prev) => {
+          // Merge: keep local "analyzed" status for recently analyzed matches
+          return userMatches.map((fm) => {
+            if (locallyAnalyzed.current.has(fm.id) && fm.status !== "analyzed") {
+              return { ...fm, status: "analyzed" as MatchStatus };
+            }
+            return fm;
+          });
+        });
+      } catch {
+        // Firestore read failed, keep local state
+      }
     }
   };
 

@@ -26,7 +26,7 @@ import {
   Star,
   Youtube,
 } from "lucide-react";
-import { getMatchById, getMatchAnalysis, updateMatchStatus } from "@/lib/firestore";
+import { getMatchById, getMatchAnalysis, updateMatchStatus, getCachedAnalysis, getCachedMatch, cacheAnalysisLocally } from "@/lib/firestore";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { generatePadelAnalysis } from "@/lib/padel-analysis";
 import type { Match, MatchAnalysis, MatchStatus } from "@/types";
@@ -289,20 +289,66 @@ export default function MatchAnalysisPage() {
     }
 
     try {
-      if (isFirebaseConfigured) {
-        const matchData = await getMatchById(matchId);
-        if (matchData) {
-          setMatch(matchData);
+      let matchData: Match | null = null;
 
-          if (matchData.status === "analyzed") {
-            const analysisData = await getMatchAnalysis(matchId);
-            if (analysisData) {
-              setAnalysis(analysisData);
-            } else {
-              const localAnalysis = generatePadelAnalysis(matchId);
-              setAnalysis(localAnalysis);
+      // 1. Intentar cargar desde Firestore
+      if (isFirebaseConfigured) {
+        try {
+          matchData = await getMatchById(matchId);
+        } catch (err) {
+          console.warn("[Match] Error cargando desde Firestore:", err);
+        }
+      }
+
+      // 2. Si Firestore falló, intentar caché local
+      if (!matchData) {
+        matchData = getCachedMatch(matchId);
+      }
+
+      if (matchData) {
+        setMatch(matchData);
+
+        // 3. Intentar obtener análisis desde Firestore
+        let analysisData: MatchAnalysis | null = null;
+        if (isFirebaseConfigured && matchData.status === "analyzed") {
+          try {
+            analysisData = await getMatchAnalysis(matchId);
+          } catch (err) {
+            console.warn("[Match] Error cargando análisis desde Firestore:", err);
+          }
+        }
+
+        // 4. Si no hay análisis en Firestore, buscar en caché local
+        if (!analysisData) {
+          analysisData = getCachedAnalysis(matchId);
+          if (analysisData) {
+            console.log("[Match] Análisis encontrado en caché local");
+            // Si tenemos análisis local, el match debería estar como "analyzed"
+            if (matchData.status !== "analyzed") {
+              setMatch({ ...matchData, status: "analyzed" });
             }
           }
+        }
+
+        // 5. Si todavía no hay análisis, generar uno nuevo
+        if (!analysisData && (matchData.status === "analyzed" || matchData.status === "processing" || matchData.status === "uploaded")) {
+          console.log("[Match] Generando análisis local...");
+          analysisData = generatePadelAnalysis(matchId);
+          cacheAnalysisLocally(matchId, analysisData);
+          setMatch({ ...matchData, status: "analyzed" });
+
+          // Intentar actualizar estado en Firestore
+          if (isFirebaseConfigured) {
+            try {
+              await updateMatchStatus(matchId, "analyzed");
+            } catch {
+              console.warn("[Match] No se pudo actualizar estado en Firestore");
+            }
+          }
+        }
+
+        if (analysisData) {
+          setAnalysis(analysisData);
         }
       }
     } catch (error) {
@@ -316,17 +362,19 @@ export default function MatchAnalysisPage() {
     loadData();
   }, [loadData]);
 
-  // Auto-trigger analysis when match status is "uploaded"
+  // Auto-trigger analysis when match status is "uploaded" or "processing" and we don't have analysis yet
   useEffect(() => {
-    if (match?.status === "uploaded" && !autoTriggered.current && !processing) {
-      autoTriggered.current = true;
-      triggerAnalysis();
+    if (match && !analysis && !autoTriggered.current && !processing) {
+      if (match.status === "uploaded" || match.status === "processing") {
+        autoTriggered.current = true;
+        triggerAnalysis();
+      }
     }
-  }, [match?.status, processing]);
+  }, [match?.status, analysis, processing]);
 
-  // Polling cuando está en procesamiento
+  // Polling cuando está en procesamiento y no tenemos análisis
   useEffect(() => {
-    if (match?.status !== "processing") return;
+    if (match?.status !== "processing" || analysis) return;
 
     const interval = setInterval(async () => {
       try {
@@ -336,17 +384,29 @@ export default function MatchAnalysisPage() {
             setMatch(matchData);
             if (matchData.status === "analyzed") {
               const analysisData = await getMatchAnalysis(matchId);
-              setAnalysis(analysisData || generatePadelAnalysis(matchId));
+              if (analysisData) {
+                setAnalysis(analysisData);
+              } else {
+                // Firestore dice analyzed pero no hay datos -> generar localmente
+                const localAnalysis = generatePadelAnalysis(matchId);
+                cacheAnalysisLocally(matchId, localAnalysis);
+                setAnalysis(localAnalysis);
+              }
             }
           }
         }
       } catch {
-        // Silenciar errores de polling
+        // Si Firestore falla, generar análisis localmente
+        const cachedAnalysis = getCachedAnalysis(matchId);
+        if (cachedAnalysis) {
+          setAnalysis(cachedAnalysis);
+          setMatch((prev) => prev ? { ...prev, status: "analyzed" } : prev);
+        }
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [match?.status, matchId]);
+  }, [match?.status, matchId, analysis]);
 
   const triggerAnalysis = async () => {
     if (!matchId) return;
@@ -364,32 +424,32 @@ export default function MatchAnalysisPage() {
 
       if (data.success) {
         await loadData();
-      } else {
-        throw new Error(data.error || "Error en API");
+        return;
       }
     } catch (error) {
       console.warn("API falló, generando análisis local:", error);
+    }
 
-      // Fallback: generar análisis localmente
-      try {
-        const localAnalysis = generatePadelAnalysis(matchId);
-        setAnalysis(localAnalysis);
+    // Fallback: generar análisis localmente SIEMPRE
+    try {
+      const localAnalysis = generatePadelAnalysis(matchId);
+      cacheAnalysisLocally(matchId, localAnalysis);
+      setAnalysis(localAnalysis);
 
-        // Intentar actualizar el estado en Firestore
-        if (isFirebaseConfigured) {
-          try {
-            await updateMatchStatus(matchId, "analyzed");
-          } catch {
-            console.warn("No se pudo actualizar estado en Firestore");
-          }
+      // Intentar actualizar el estado en Firestore
+      if (isFirebaseConfigured) {
+        try {
+          await updateMatchStatus(matchId, "analyzed");
+        } catch {
+          console.warn("No se pudo actualizar estado en Firestore");
         }
-
-        if (match) {
-          setMatch({ ...match, status: "analyzed" });
-        }
-      } catch (innerError) {
-        console.error("Error generando análisis local:", innerError);
       }
+
+      if (match) {
+        setMatch({ ...match, status: "analyzed" });
+      }
+    } catch (innerError) {
+      console.error("Error generando análisis local:", innerError);
     } finally {
       setProcessing(false);
     }
@@ -469,21 +529,23 @@ export default function MatchAnalysisPage() {
             </div>
           )}
 
-          {match.status === "error" && (
+          {(match.status === "error" || match.status === "uploaded") && (
             <div className="space-y-3 text-center">
               <p className="text-sm text-destructive">
-                Hubo un error al analizar el video. Podés reintentar.
+                {match.status === "error"
+                  ? "Hubo un error al analizar el video. Podés reintentar."
+                  : "El partido aún no fue analizado. Iniciá el análisis."}
               </p>
               <Button onClick={triggerAnalysis} disabled={processing}>
                 {processing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Reintentando...
+                    Analizando...
                   </>
                 ) : (
                   <>
                     <Zap className="mr-2 h-4 w-4" />
-                    Reintentar análisis
+                    Analizar con IA
                   </>
                 )}
               </Button>
