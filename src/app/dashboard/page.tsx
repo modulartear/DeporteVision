@@ -47,12 +47,10 @@ import {
   createMatchDocument,
   getUserMatches,
   updateMatchStatus,
-  saveMatchAnalysis,
   cacheAnalysisLocally,
   getCachedAnalysis,
   cacheMatchLocally,
 } from "@/lib/firestore";
-import { generatePadelAnalysis } from "@/lib/padel-analysis";
 import { useToast } from "@/hooks/use-toast";
 import type { Match, MatchStatus, MatchAnalysis } from "@/types";
 
@@ -259,41 +257,26 @@ export default function DashboardPage() {
         body: JSON.stringify({ matchId, videoUrl, playerNames: names.filter(Boolean) }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.analysis) {
-          const analysis = data.analysis as MatchAnalysis;
-          cacheAnalysisLocally(matchId, analysis);
-          console.log("[Analisis] IA completada ✓");
-          return { success: true, analysis };
-        }
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Error desconocido" }));
+        throw new Error(err.error ?? `Error HTTP ${response.status}`);
       }
 
-      throw new Error("API no devolvió éxito");
-    } catch (apiError) {
-      console.warn("[Analisis] API falló, usando fallback local:", apiError);
-
-      // Fallback: análisis aleatorio local
-      try {
-        if (isFirebaseConfigured) {
-          await updateMatchStatus(matchId, "processing").catch(() => {});
-        }
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const analysis = generatePadelAnalysis(matchId);
+      const data = await response.json();
+      if (data.success && data.analysis) {
+        const analysis = data.analysis as MatchAnalysis;
         cacheAnalysisLocally(matchId, analysis);
-        if (isFirebaseConfigured) {
-          await saveMatchAnalysis(matchId, analysis).catch(() =>
-            updateMatchStatus(matchId, "analyzed").catch(() => {})
-          );
-        }
+        console.log("[Analisis] IA completada ✓");
         return { success: true, analysis };
-      } catch (error) {
-        console.error("[Analisis] Error en fallback:", error);
-        if (isFirebaseConfigured) {
-          await updateMatchStatus(matchId, "error", error instanceof Error ? error.message : "Error").catch(() => {});
-        }
-        return { success: false, analysis: null };
       }
+
+      throw new Error("La IA no pudo completar el análisis.");
+    } catch (apiError) {
+      console.error("[Analisis] Error en análisis IA:", apiError);
+      if (isFirebaseConfigured) {
+        await updateMatchStatus(matchId, "error", apiError instanceof Error ? apiError.message : "Error IA").catch(() => {});
+      }
+      return { success: false, analysis: null };
     }
   };
 
@@ -414,6 +397,14 @@ export default function DashboardPage() {
       return;
     }
 
+    const missingNames = playerNames.filter((n) => !n.trim());
+    if (missingNames.length > 0) {
+      const msg = "Completá los nombres de los 4 jugadores antes de analizar.";
+      setYoutubeError(msg);
+      toast({ title: "Nombres requeridos", description: msg, variant: "destructive" });
+      return;
+    }
+
     setUploading(true);
 
     try {
@@ -448,6 +439,16 @@ export default function DashboardPage() {
       toast({
         title: "Firebase no configurado",
         description: "Configura las variables de entorno para habilitar la subida de videos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const missingNames = playerNames.filter((n) => !n.trim());
+    if (missingNames.length > 0) {
+      toast({
+        title: "Nombres requeridos",
+        description: "Completá los nombres de los 4 jugadores antes de analizar.",
         variant: "destructive",
       });
       return;
@@ -737,10 +738,11 @@ export default function DashboardPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-1 block flex items-center gap-1">
+                  <label className="text-sm font-medium mb-1 block flex items-center gap-1">
                     <Zap className="h-3 w-3 text-primary" />
-                    Nombres de jugadores <span className="text-xs text-muted-foreground">(opcional · mejora el análisis IA)</span>
+                    Nombres de los 4 jugadores <span className="text-destructive text-xs">*requerido</span>
                   </label>
+                  <p className="text-xs text-muted-foreground mb-2">La IA usará estos nombres — no inventará nombres ficticios.</p>
                   <div className="grid grid-cols-2 gap-2">
                     {playerNames.map((name, i) => (
                       <input
@@ -750,7 +752,7 @@ export default function DashboardPage() {
                         onChange={(e) => setPlayerNames((prev) => prev.map((n, idx) => idx === i ? e.target.value : n))}
                         placeholder={i < 2 ? `Jugador ${i + 1} (Eq. 1)` : `Jugador ${i + 1} (Eq. 2)`}
                         disabled={uploading}
-                        className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                        className={"w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 " + (!name.trim() ? "border-destructive/50" : "border-input")}
                       />
                     ))}
                   </div>
@@ -869,10 +871,11 @@ export default function DashboardPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-1">
+                  <label className="text-sm font-medium mb-1 flex items-center gap-1">
                     <Zap className="h-3 w-3 text-primary" />
-                    Nombres de jugadores <span className="text-xs text-muted-foreground">(opcional · mejora el análisis IA)</span>
+                    Nombres de los 4 jugadores <span className="text-destructive text-xs">*requerido</span>
                   </label>
+                  <p className="text-xs text-muted-foreground mb-2">La IA usará estos nombres — no inventará nombres ficticios.</p>
                   <div className="grid grid-cols-2 gap-2">
                     {playerNames.map((name, i) => (
                       <input
@@ -882,7 +885,7 @@ export default function DashboardPage() {
                         onChange={(e) => setPlayerNames((prev) => prev.map((n, idx) => idx === i ? e.target.value : n))}
                         placeholder={i < 2 ? `Jugador ${i + 1} (Eq. 1)` : `Jugador ${i + 1} (Eq. 2)`}
                         disabled={uploading}
-                        className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                        className={"w-full px-3 py-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 " + (!name.trim() ? "border-destructive/50" : "border-input")}
                       />
                     ))}
                   </div>

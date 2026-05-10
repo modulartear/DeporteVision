@@ -1,227 +1,65 @@
 /**
- * Análisis real de pádel con IA usando z-ai-web-dev-sdk.
- * VLM analiza el video directamente. LLM genera el informe narrativo completo.
+ * Motor de análisis real de pádel con IA.
+ *
+ * El VLM de z-ai-web-dev-sdk observa el video completo y extrae estadísticas
+ * reales de lo que ve. NINGÚN dato es inventado ni aleatorio.
  * Solo se usa en backend (server-side).
  */
 
 import ZAI from "z-ai-web-dev-sdk";
-import type { MatchAnalysis, MatchResult, TeamStats, PlayerStats, ShotHeatmapPoint, PlayerHeatmap, PossessionSet, Clip, KeyMetric } from "@/types";
+import type {
+  MatchAnalysis,
+  MatchResult,
+  TeamStats,
+  PlayerStats,
+  ShotHeatmapPoint,
+  PlayerHeatmap,
+  PossessionSet,
+  Clip,
+  KeyMetric,
+} from "@/types";
 
-// ─── Prompt VLM: análisis del video de pádel ─────────────────────────────────
+// ─── Tipo interno de datos extraídos por el VLM ───────────────────────────────
 
-function buildVideoAnalysisPrompt(playerNames: string[]): string {
-  const players = playerNames.length >= 2
-    ? playerNames.join(", ")
-    : "Jugador 1, Jugador 2, Jugador 3, Jugador 4";
-
-  return `Eres el mejor analista de pádel del mundo, con experiencia como jugador profesional nivel WPT y entrenador de élite.
-
-Analiza este video de partido de pádel. Los jugadores en cancha son: ${players}.
-
-Extrae y devuelve ÚNICAMENTE un objeto JSON válido con esta estructura exacta (sin texto adicional, sin markdown, solo JSON puro):
-
-{
-  "resultado": {
-    "sets": [[6,4],[6,3]],
-    "ganador": 1,
-    "duracion": "1h 23min",
-    "totalPuntos": 87
-  },
-  "equipos": [
-    {
-      "equipo": 1,
-      "winners": 24,
-      "erroresNoForzados": 14,
-      "erroresForzados": 9,
-      "aces": 4,
-      "doblesFaltas": 2,
-      "efectividadSmash": 72,
-      "efectividadVolea": 65,
-      "efectividadResto": 58,
-      "breakPointsGanados": 7,
-      "breakPointsTotal": 12,
-      "totalPuntos": 52
-    },
-    {
-      "equipo": 2,
-      "winners": 18,
-      "erroresNoForzados": 21,
-      "erroresForzados": 11,
-      "aces": 2,
-      "doblesFaltas": 4,
-      "efectividadSmash": 61,
-      "efectividadVolea": 54,
-      "efectividadResto": 47,
-      "breakPointsGanados": 4,
-      "breakPointsTotal": 11,
-      "totalPuntos": 35
-    }
-  ],
-  "jugadores": [
-    {
-      "nombre": "Jugador 1",
-      "equipo": 1,
-      "posicion": "derecha",
-      "winners": 14,
-      "erroresNoForzados": 7,
-      "erroresForzados": 5,
-      "smashExitosos": 8,
-      "smashTotal": 11,
-      "voleaExitosas": 18,
-      "voleaTotal": 26,
-      "bandejaExitosas": 12,
-      "bandejaTotal": 15,
-      "viboraExitosas": 7,
-      "viboraTotal": 10,
-      "globoExitosos": 4,
-      "globoTotal": 7,
-      "dropShotExitosos": 3,
-      "dropShotTotal": 5,
-      "velocidadSaque": 168,
-      "efectividadSaque": 71,
-      "efectividadResto": 59,
-      "fortalezas": ["Víbora explosiva", "Posicionamiento en red", "Solidez mental en puntos clave"],
-      "debilidades": ["Saque sin variación", "Bandeja predecible al mismo sector"],
-      "nivelMental": 8
-    }
-  ],
-  "zonasTiros": [
-    {"zona": "red_centro", "x": 50, "y": 25, "count": 28, "tipo": "winner"},
-    {"zona": "red_derecha", "x": 20, "y": 30, "count": 22, "tipo": "winner"},
-    {"zona": "red_izquierda", "x": 80, "y": 30, "count": 19, "tipo": "winner"},
-    {"zona": "medio_derecha", "x": 25, "y": 55, "count": 15, "tipo": "rally"},
-    {"zona": "medio_izquierda", "x": 75, "y": 55, "count": 12, "tipo": "rally"},
-    {"zona": "fondo_derecha", "x": 20, "y": 75, "count": 18, "tipo": "error"},
-    {"zona": "fondo_izquierda", "x": 80, "y": 75, "count": 16, "tipo": "error"},
-    {"zona": "fondo_centro", "x": 50, "y": 80, "count": 21, "tipo": "rally"},
-    {"zona": "saque_derecha", "x": 30, "y": 92, "count": 8, "tipo": "rally"},
-    {"zona": "saque_izquierda", "x": 70, "y": 92, "count": 7, "tipo": "rally"}
-  ],
-  "posesionPorSet": [
-    {"set": 1, "equipo1": 54, "equipo2": 46},
-    {"set": 2, "equipo1": 58, "equipo2": 42}
-  ],
-  "momentosClave": [
-    {"descripcion": "Smash ganador en break point decisivo", "tiempo": 1847, "tipo": "winner", "jugador": "Jugador 1"},
-    {"descripcion": "Volea cruzada brillante", "tiempo": 2340, "tipo": "winner", "jugador": "Jugador 2"},
-    {"descripcion": "Rally de 19 golpes con bandeja perfecta", "tiempo": 3102, "tipo": "amazing_point", "jugador": "Jugador 1"},
-    {"descripcion": "Error no forzado en punto clave", "tiempo": 1203, "tipo": "error", "jugador": "Jugador 3"},
-    {"descripcion": "Break point convertido con víbora", "tiempo": 2890, "tipo": "key_point", "jugador": "Jugador 1"}
-  ]
-}
-
-Analiza el video REAL que te envío. Observa:
-- El marcador cuando sea visible en pantalla
-- Los jugadores: su posición, golpes, posturas
-- La calidad técnica de cada shot: bandeja, víbora, smash, volley, globo, chiquita, rulo
-- Heatmaps: dónde se juegan los puntos en la cancha
-- Los momentos más importantes del partido
-
-Si no puedes ver claramente algún dato, estima con datos realistas coherentes con lo que sí puedes observar.
-Completa el array "jugadores" con TODOS los jugadores visibles (máximo 4).
-Devuelve SOLO el JSON, sin explicaciones ni markdown.`;
-}
-
-// ─── Prompt LLM: informe narrativo WPT ───────────────────────────────────────
-
-function buildReportPrompt(data: VideoAnalysisData, playerNames: string[]): string {
-  return `Eres Fernando Belasteguín, el mejor jugador de pádel de la historia del WPT, ahora reconvertido en el analista más reconocido del circuito profesional. Tu análisis es técnico, específico y accionable.
-
-Datos del partido analizado:
-${JSON.stringify(data, null, 2)}
-
-Jugadores: ${playerNames.join(", ")}
-
-Genera un INFORME COMPLETO Y PROFESIONAL en español en formato Markdown. Sé específico con los datos reales del partido. El informe debe tener estas secciones OBLIGATORIAS:
-
-# 🎾 ANÁLISIS COMPLETO DEL PARTIDO — DEPORTEVISION AI
-
-## 📋 RESUMEN EJECUTIVO
-[3-4 párrafos: resultado, nivel mostrado, jugador más determinante, momento decisivo del partido. Cita stats concretos.]
-
-## 📊 ESTADÍSTICAS GLOBALES
-| Métrica | Equipo 1 | Equipo 2 |
-|---------|----------|----------|
-[Tabla completa con todos los datos de los equipos]
-
-## 🧠 ANÁLISIS TÁCTICO GENERAL
-### Control de la Red
-### Gestión del Globo y Lob
-### Construcción del Punto
-### Zonas de Presión y Dominio
-
-## 👤 ANÁLISIS INDIVIDUAL POR JUGADOR
-
-[Para CADA jugador del partido:]
-### 🏅 [NOMBRE DEL JUGADOR] — Equipo [X] · Posición [derecha/revés]
-
-**Nivel general: X/10**
-
-#### 🎾 Técnica
-- Golpes estrella y eficacia real (usa los datos exactos del partido)
-- Saque: velocidad, variación, efectividad
-- Resto: anticipación y calidad
-
-#### 🧠 Táctica
-- Posicionamiento y tiempo en red vs fondo
-- Patrones ofensivos identificados
-- Coordinación con pareja
-
-#### 💪 Físico
-- Intensidad y cobertura de cancha
-- Tendencia física durante el partido
-
-#### 🎯 Mental / Competitivo
-- Rendimiento en puntos clave
-- Respuesta tras errores
-- Puntuación mental: X/10
-
-#### ✅ Fortalezas | ⚠️ Debilidades | 📈 Plan de Mejora
-
----
-
-## 🤝 ANÁLISIS POR PAREJAS
-### Pareja Ganadora: [Nombres]
-### Pareja Perdedora: [Nombres]
-### Matchup Táctico: ¿Qué explotar? ¿Qué defender?
-
-## ⚡ TOP 5 MOMENTOS CLAVE
-[Análisis táctico-mental de cada punto decisivo con los timestamps]
-
-## 📅 PLAN DE ENTRENAMIENTO — PRÓXIMAS 4 SEMANAS
-### Semana 1: Técnica Individual
-### Semana 2: Táctica de Pareja
-### Semana 3: Físico y Mental
-### Semana 4: Integración y Partido Prueba
-[Personalizado por jugador]
-
----
-*Análisis generado por DeporteVision AI · Motor WPT-level · ${new Date().toLocaleDateString("es-AR")}*`;
-}
-
-// ─── Tipos internos del análisis de video ────────────────────────────────────
-
-interface VideoAnalysisData {
+export interface RealMatchData {
+  observacionGeneral: string;
   resultado: {
     sets: [number, number][];
-    ganador: 1 | 2;
+    ganador: 1 | 2 | null;
     duracion: string;
     totalPuntos: number;
+    marcadorVisible: boolean;
   };
-  equipos: Array<{
-    equipo: 1 | 2;
-    winners: number;
-    erroresNoForzados: number;
-    erroresForzados: number;
-    aces: number;
-    doblesFaltas: number;
-    efectividadSmash: number;
-    efectividadVolea: number;
-    efectividadResto: number;
-    breakPointsGanados: number;
-    breakPointsTotal: number;
-    totalPuntos: number;
-  }>;
+  equipos: [
+    {
+      equipo: 1;
+      winners: number;
+      erroresNoForzados: number;
+      erroresForzados: number;
+      aces: number;
+      doblesFaltas: number;
+      efectividadSmash: number;
+      efectividadVolea: number;
+      efectividadResto: number;
+      breakPointsGanados: number;
+      breakPointsTotal: number;
+      totalPuntos: number;
+    },
+    {
+      equipo: 2;
+      winners: number;
+      erroresNoForzados: number;
+      erroresForzados: number;
+      aces: number;
+      doblesFaltas: number;
+      efectividadSmash: number;
+      efectividadVolea: number;
+      efectividadResto: number;
+      breakPointsGanados: number;
+      breakPointsTotal: number;
+      totalPuntos: number;
+    }
+  ];
   jugadores: Array<{
     nombre: string;
     equipo: 1 | 2;
@@ -229,30 +67,32 @@ interface VideoAnalysisData {
     winners: number;
     erroresNoForzados: number;
     erroresForzados: number;
+    smashObservados: number;
     smashExitosos: number;
-    smashTotal: number;
+    voleaObservadas: number;
     voleaExitosas: number;
-    voleaTotal: number;
+    bandejaObservadas: number;
     bandejaExitosas: number;
-    bandejaTotal: number;
+    viboraObservadas: number;
     viboraExitosas: number;
-    viboraTotal: number;
+    globoObservados: number;
     globoExitosos: number;
-    globoTotal: number;
+    dropShotObservados: number;
     dropShotExitosos: number;
-    dropShotTotal: number;
     velocidadSaque: number;
     efectividadSaque: number;
     efectividadResto: number;
-    fortalezas: string[];
-    debilidades: string[];
+    tiempoEnRed: number;
+    tiempoEnFondo: number;
+    fortalezasObservadas: string[];
+    debilidadesObservadas: string[];
     nivelMental: number;
   }>;
   zonasTiros: Array<{
     zona: string;
     x: number;
     y: number;
-    count: number;
+    conteoObservado: number;
     tipo: "winner" | "error" | "rally";
   }>;
   posesionPorSet: Array<{
@@ -262,79 +102,276 @@ interface VideoAnalysisData {
   }>;
   momentosClave: Array<{
     descripcion: string;
-    tiempo: number;
+    tiempoAproximado: number;
     tipo: "winner" | "error" | "key_point" | "amazing_point";
     jugador: string;
   }>;
+  confianza: "alta" | "media" | "baja";
+  notasDelAnalista: string;
 }
 
-// ─── Fallback: análisis realista sin video ───────────────────────────────────
+// ─── Prompt VLM: extracción de datos reales del video ─────────────────────────
 
-async function generateAIOnlyAnalysis(zai: InstanceType<typeof ZAI>, playerNames: string[]): Promise<VideoAnalysisData> {
-  const names = playerNames.length >= 4
-    ? playerNames
-    : [...playerNames, ...["Jugador A", "Jugador B", "Jugador C", "Jugador D"].slice(playerNames.length)];
+function buildVLMPrompt(playerNames: string[]): string {
+  const team1 = playerNames.slice(0, 2).join(" y ") || "Equipo 1";
+  const team2 = playerNames.slice(2, 4).join(" y ") || "Equipo 2";
 
-  const prompt = `Eres un analista experto de pádel. Genera datos de análisis REALISTAS y DETALLADOS para un partido de pádel entre:
-Equipo 1: ${names[0]} (derecha) y ${names[1]} (revés)
-Equipo 2: ${names[2]} (derecha) y ${names[3]} (revés)
+  return `Eres un sistema experto de análisis de vídeo deportivo de pádel. Tu tarea es observar ESTE VIDEO REAL y extraer estadísticas REALES basadas exclusivamente en lo que ves.
 
-Devuelve SOLO un JSON válido con esta estructura exacta (datos realistas de nivel amateur-avanzado/competición regional):
+REGLA ABSOLUTA: NO INVENTES NINGÚN DATO. Si no puedes ver algo con claridad, usa 0 en lugar de inventar un número. Si el marcador no es visible, pon null en los sets.
+
+Jugadores identificados:
+- Equipo 1 (lado izquierdo de pantalla): ${team1}
+- Equipo 2 (lado derecho de pantalla): ${team2}
+
+OBSERVA el video completo y responde con un JSON que siga EXACTAMENTE esta estructura. Solo JSON, sin texto adicional:
 
 {
-  "resultado": { "sets": [[6,4],[6,3]], "ganador": 1, "duracion": "1h 28min", "totalPuntos": 89 },
+  "observacionGeneral": "descripción de lo que realmente ves en el video",
+  "resultado": {
+    "sets": [[6,4],[7,5]],
+    "ganador": 1,
+    "duracion": "1h 23min",
+    "totalPuntos": 87,
+    "marcadorVisible": true
+  },
   "equipos": [
-    { "equipo": 1, "winners": 24, "erroresNoForzados": 14, "erroresForzados": 9, "aces": 4, "doblesFaltas": 2, "efectividadSmash": 72, "efectividadVolea": 65, "efectividadResto": 58, "breakPointsGanados": 7, "breakPointsTotal": 12, "totalPuntos": 52 },
-    { "equipo": 2, "winners": 18, "erroresNoForzados": 21, "erroresForzados": 11, "aces": 2, "doblesFaltas": 4, "efectividadSmash": 61, "efectividadVolea": 54, "efectividadResto": 47, "breakPointsGanados": 4, "breakPointsTotal": 11, "totalPuntos": 37 }
+    {
+      "equipo": 1,
+      "winners": 0,
+      "erroresNoForzados": 0,
+      "erroresForzados": 0,
+      "aces": 0,
+      "doblesFaltas": 0,
+      "efectividadSmash": 0,
+      "efectividadVolea": 0,
+      "efectividadResto": 0,
+      "breakPointsGanados": 0,
+      "breakPointsTotal": 0,
+      "totalPuntos": 0
+    },
+    {
+      "equipo": 2,
+      "winners": 0,
+      "erroresNoForzados": 0,
+      "erroresForzados": 0,
+      "aces": 0,
+      "doblesFaltas": 0,
+      "efectividadSmash": 0,
+      "efectividadVolea": 0,
+      "efectividadResto": 0,
+      "breakPointsGanados": 0,
+      "breakPointsTotal": 0,
+      "totalPuntos": 0
+    }
   ],
   "jugadores": [
-    { "nombre": "${names[0]}", "equipo": 1, "posicion": "derecha", "winners": 14, "erroresNoForzados": 7, "erroresForzados": 5, "smashExitosos": 8, "smashTotal": 11, "voleaExitosas": 18, "voleaTotal": 26, "bandejaExitosas": 12, "bandejaTotal": 15, "viboraExitosas": 7, "viboraTotal": 10, "globoExitosos": 4, "globoTotal": 7, "dropShotExitosos": 3, "dropShotTotal": 5, "velocidadSaque": 168, "efectividadSaque": 71, "efectividadResto": 59, "fortalezas": ["Víbora explosiva con mucho topspin", "Excelente posicionamiento en red", "Solidez mental en puntos críticos"], "debilidades": ["Saque monótono sin variación de dirección", "Bandeja siempre al mismo sector"], "nivelMental": 8 },
-    { "nombre": "${names[1]}", "equipo": 1, "posicion": "revés", "winners": 10, "erroresNoForzados": 7, "erroresForzados": 4, "smashExitosos": 14, "smashTotal": 18, "voleaExitosas": 12, "voleaTotal": 19, "bandejaExitosas": 8, "bandejaTotal": 13, "viboraExitosas": 3, "viboraTotal": 7, "globoExitosos": 8, "globoTotal": 12, "dropShotExitosos": 1, "dropShotTotal": 3, "velocidadSaque": 155, "efectividadSaque": 63, "efectividadResto": 51, "fortalezas": ["Smash directo muy potente", "Buena cobertura diagonal con pareja"], "debilidades": ["Exceso de globos defensivos en situaciones atacantes", "Bandeja de calidad irregular"], "nivelMental": 6 },
-    { "nombre": "${names[2]}", "equipo": 2, "posicion": "derecha", "winners": 11, "erroresNoForzados": 10, "erroresForzados": 6, "smashExitosos": 6, "smashTotal": 10, "voleaExitosas": 16, "voleaTotal": 24, "bandejaExitosas": 14, "bandejaTotal": 18, "viboraExitosas": 9, "viboraTotal": 13, "globoExitosos": 5, "globoTotal": 9, "dropShotExitosos": 4, "dropShotTotal": 6, "velocidadSaque": 162, "efectividadSaque": 68, "efectividadResto": 55, "fortalezas": ["La mejor bandeja del partido, con mucho control lateral", "Repertorio técnico más completo"], "debilidades": ["Depende demasiado de su pareja para cerrar puntos", "Tendencia a bajarse de la red"], "nivelMental": 7 },
-    { "nombre": "${names[3]}", "equipo": 2, "posicion": "revés", "winners": 7, "erroresNoForzados": 11, "erroresForzados": 5, "smashExitosos": 4, "smashTotal": 8, "voleaExitosas": 10, "voleaTotal": 17, "bandejaExitosas": 9, "bandejaTotal": 15, "viboraExitosas": 4, "viboraTotal": 9, "globoExitosos": 12, "globoTotal": 17, "dropShotExitosos": 1, "dropShotTotal": 4, "velocidadSaque": 148, "efectividadSaque": 58, "efectividadResto": 48, "fortalezas": ["Buena cobertura lateral defensiva", "Globo con buena profundidad bajo presión"], "debilidades": ["Posicionamiento excesivamente defensivo, juega demasiado desde el fondo", "Alto número de errores no forzados en puntos clave"], "nivelMental": 5 }
+    {
+      "nombre": "${playerNames[0] || "Jugador 1"}",
+      "equipo": 1,
+      "posicion": "derecha",
+      "winners": 0,
+      "erroresNoForzados": 0,
+      "erroresForzados": 0,
+      "smashObservados": 0,
+      "smashExitosos": 0,
+      "voleaObservadas": 0,
+      "voleaExitosas": 0,
+      "bandejaObservadas": 0,
+      "bandejaExitosas": 0,
+      "viboraObservadas": 0,
+      "viboraExitosas": 0,
+      "globoObservados": 0,
+      "globoExitosos": 0,
+      "dropShotObservados": 0,
+      "dropShotExitosos": 0,
+      "velocidadSaque": 0,
+      "efectividadSaque": 0,
+      "efectividadResto": 0,
+      "tiempoEnRed": 0,
+      "tiempoEnFondo": 0,
+      "fortalezasObservadas": ["observación real del video"],
+      "debilidadesObservadas": ["observación real del video"],
+      "nivelMental": 0
+    },
+    {
+      "nombre": "${playerNames[1] || "Jugador 2"}",
+      "equipo": 1,
+      "posicion": "revés",
+      "winners": 0, "erroresNoForzados": 0, "erroresForzados": 0,
+      "smashObservados": 0, "smashExitosos": 0, "voleaObservadas": 0, "voleaExitosas": 0,
+      "bandejaObservadas": 0, "bandejaExitosas": 0, "viboraObservadas": 0, "viboraExitosas": 0,
+      "globoObservados": 0, "globoExitosos": 0, "dropShotObservados": 0, "dropShotExitosos": 0,
+      "velocidadSaque": 0, "efectividadSaque": 0, "efectividadResto": 0,
+      "tiempoEnRed": 0, "tiempoEnFondo": 0,
+      "fortalezasObservadas": [], "debilidadesObservadas": [], "nivelMental": 0
+    },
+    {
+      "nombre": "${playerNames[2] || "Jugador 3"}",
+      "equipo": 2,
+      "posicion": "derecha",
+      "winners": 0, "erroresNoForzados": 0, "erroresForzados": 0,
+      "smashObservados": 0, "smashExitosos": 0, "voleaObservadas": 0, "voleaExitosas": 0,
+      "bandejaObservadas": 0, "bandejaExitosas": 0, "viboraObservadas": 0, "viboraExitosas": 0,
+      "globoObservados": 0, "globoExitosos": 0, "dropShotObservados": 0, "dropShotExitosos": 0,
+      "velocidadSaque": 0, "efectividadSaque": 0, "efectividadResto": 0,
+      "tiempoEnRed": 0, "tiempoEnFondo": 0,
+      "fortalezasObservadas": [], "debilidadesObservadas": [], "nivelMental": 0
+    },
+    {
+      "nombre": "${playerNames[3] || "Jugador 4"}",
+      "equipo": 2,
+      "posicion": "revés",
+      "winners": 0, "erroresNoForzados": 0, "erroresForzados": 0,
+      "smashObservados": 0, "smashExitosos": 0, "voleaObservadas": 0, "voleaExitosas": 0,
+      "bandejaObservadas": 0, "bandejaExitosas": 0, "viboraObservadas": 0, "viboraExitosas": 0,
+      "globoObservados": 0, "globoExitosos": 0, "dropShotObservados": 0, "dropShotExitosos": 0,
+      "velocidadSaque": 0, "efectividadSaque": 0, "efectividadResto": 0,
+      "tiempoEnRed": 0, "tiempoEnFondo": 0,
+      "fortalezasObservadas": [], "debilidadesObservadas": [], "nivelMental": 0
+    }
   ],
   "zonasTiros": [
-    {"zona": "red_centro", "x": 50, "y": 25, "count": 31, "tipo": "winner"},
-    {"zona": "red_derecha", "x": 20, "y": 30, "count": 24, "tipo": "winner"},
-    {"zona": "red_izquierda", "x": 80, "y": 30, "count": 21, "tipo": "winner"},
-    {"zona": "medio_derecha", "x": 25, "y": 55, "count": 16, "tipo": "rally"},
-    {"zona": "medio_izquierda", "x": 75, "y": 55, "count": 13, "tipo": "rally"},
-    {"zona": "fondo_derecha", "x": 20, "y": 75, "count": 19, "tipo": "error"},
-    {"zona": "fondo_izquierda", "x": 80, "y": 75, "count": 17, "tipo": "error"},
-    {"zona": "fondo_centro", "x": 50, "y": 80, "count": 23, "tipo": "rally"},
-    {"zona": "saque_derecha", "x": 30, "y": 92, "count": 9, "tipo": "rally"},
-    {"zona": "saque_izquierda", "x": 70, "y": 92, "count": 8, "tipo": "rally"}
+    {"zona": "red_centro", "x": 50, "y": 25, "conteoObservado": 0, "tipo": "winner"},
+    {"zona": "red_derecha", "x": 20, "y": 30, "conteoObservado": 0, "tipo": "winner"},
+    {"zona": "red_izquierda", "x": 80, "y": 30, "conteoObservado": 0, "tipo": "winner"},
+    {"zona": "medio_derecha", "x": 25, "y": 55, "conteoObservado": 0, "tipo": "rally"},
+    {"zona": "medio_izquierda", "x": 75, "y": 55, "conteoObservado": 0, "tipo": "rally"},
+    {"zona": "fondo_derecha", "x": 20, "y": 75, "conteoObservado": 0, "tipo": "error"},
+    {"zona": "fondo_izquierda", "x": 80, "y": 75, "conteoObservado": 0, "tipo": "error"},
+    {"zona": "fondo_centro", "x": 50, "y": 80, "conteoObservado": 0, "tipo": "rally"},
+    {"zona": "saque_derecha", "x": 30, "y": 92, "conteoObservado": 0, "tipo": "rally"},
+    {"zona": "saque_izquierda", "x": 70, "y": 92, "conteoObservado": 0, "tipo": "rally"}
   ],
   "posesionPorSet": [
-    {"set": 1, "equipo1": 54, "equipo2": 46},
-    {"set": 2, "equipo1": 58, "equipo2": 42}
+    {"set": 1, "equipo1": 50, "equipo2": 50}
   ],
   "momentosClave": [
-    {"descripcion": "Smash ganador en break point decisivo del segundo set", "tiempo": 3240, "tipo": "winner", "jugador": "${names[0]}"},
-    {"descripcion": "Volea cruzada brillante que rompió el 3-3", "tiempo": 1890, "tipo": "winner", "jugador": "${names[0]}"},
-    {"descripcion": "Rally de 18 golpes con bandeja perfecta al vidrio", "tiempo": 2760, "tipo": "amazing_point", "jugador": "${names[2]}"},
-    {"descripcion": "Error no forzado en break point con el partido igualado", "tiempo": 2100, "tipo": "error", "jugador": "${names[3]}"},
-    {"descripcion": "Break point convertido con víbora explosiva", "tiempo": 4020, "tipo": "key_point", "jugador": "${names[0]}"}
-  ]
+    {"descripcion": "descripción real de lo que observaste", "tiempoAproximado": 0, "tipo": "winner", "jugador": "${playerNames[0] || "Jugador 1"}"}
+  ],
+  "confianza": "alta",
+  "notasDelAnalista": "observaciones adicionales sobre la calidad del video y lo que pudiste ver"
 }
 
-Responde SOLO con el JSON. Sin markdown, sin texto adicional.`;
-
-  const response = await zai.chat.completions.create({
-    messages: [{ role: "user", content: prompt }],
-    thinking: { type: "disabled" },
-  });
-
-  const content = response.choices[0]?.message?.content ?? "";
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("LLM no devolvió JSON válido");
-  return JSON.parse(jsonMatch[0]) as VideoAnalysisData;
+INSTRUCCIONES ESPECÍFICAS:
+1. Para "zonasTiros": cuenta cuántos golpes REALMENTE ves en cada zona de la cancha. La cancha tiene red (y=25-35), medio (y=45-65) y fondo (y=70-85). Derecha es x<50, izquierda es x>50.
+2. Para shots: solo cuenta los que claramente puedas identificar como bandeja/víbora/smash/volea/globo/drive/slice.
+3. Para "posesion": estima qué porcentaje del tiempo tiene la pelota cada equipo en cada set.
+4. Para "momentosClave": describe los 3-6 puntos más importantes que realmente observes.
+5. Para "nivelMental": califica del 1-10 la solidez mental que observas en cada jugador.
+6. Para "tiempoEnRed" y "tiempoEnFondo": porcentaje del tiempo (0-100) que ves al jugador en esa zona.
+7. Para "fortalezasObservadas" y "debilidadesObservadas": escribe solo lo que REALMENTE observas, no suposiciones genéricas.
+8. Si el video es corto o de mala calidad, pon "confianza": "baja" y explícalo en "notasDelAnalista".`;
 }
 
-// ─── Análisis VLM con video ───────────────────────────────────────────────────
+// ─── Prompt LLM: informe narrativo basado en datos REALES ─────────────────────
 
-async function analyzeVideoWithVLM(zai: InstanceType<typeof ZAI>, videoUrl: string, playerNames: string[]): Promise<VideoAnalysisData> {
-  const prompt = buildVideoAnalysisPrompt(playerNames);
+function buildNarrativePrompt(data: RealMatchData): string {
+  const statsJson = JSON.stringify({
+    resultado: data.resultado,
+    equipos: data.equipos,
+    jugadores: data.jugadores.map((j) => ({
+      nombre: j.nombre,
+      equipo: j.equipo,
+      posicion: j.posicion,
+      winners: j.winners,
+      erroresNoForzados: j.erroresNoForzados,
+      smashObservados: j.smashObservados,
+      smashExitosos: j.smashExitosos,
+      voleaObservadas: j.voleaObservadas,
+      voleaExitosas: j.voleaExitosas,
+      bandejaObservadas: j.bandejaObservadas,
+      bandejaExitosas: j.bandejaExitosas,
+      viboraObservadas: j.viboraObservadas,
+      viboraExitosas: j.viboraExitosas,
+      tiempoEnRed: j.tiempoEnRed,
+      tiempoEnFondo: j.tiempoEnFondo,
+      fortalezasObservadas: j.fortalezasObservadas,
+      debilidadesObservadas: j.debilidadesObservadas,
+      nivelMental: j.nivelMental,
+    })),
+    momentosClave: data.momentosClave,
+    confianza: data.confianza,
+    notasDelAnalista: data.notasDelAnalista,
+    observacionGeneral: data.observacionGeneral,
+  }, null, 2);
+
+  return `Eres el mejor analista de pádel del mundo, con experiencia como jugador WPT y entrenador de élite.
+
+A continuación tienes los datos REALES extraídos por visión artificial del video del partido. Estos datos son observaciones reales del video — úsalos exactamente como están, sin inventar ni modificar los números.
+
+DATOS REALES DEL PARTIDO:
+${statsJson}
+
+Genera un informe profesional completo en Markdown. Basa CADA afirmación en los datos reales de arriba. Si un dato es 0, dilo honestamente ("no se registraron golpes de este tipo en el video analizado"). Si la confianza es "baja", acláraselo al lector.
+
+# 🎾 ANÁLISIS COMPLETO DEL PARTIDO — DEPORTEVISION AI
+
+## 📋 RESUMEN EJECUTIVO
+[Basado en lo que realmente se observó. Cita los datos exactos del JSON. Menciona la confianza del análisis.]
+
+## 📊 ESTADÍSTICAS GLOBALES DEL PARTIDO
+| Métrica | ${data.jugadores.filter(j => j.equipo === 1).map(j => j.nombre).join(" / ")} | ${data.jugadores.filter(j => j.equipo === 2).map(j => j.nombre).join(" / ")} |
+|---------|-----------|-----------|
+[Tabla completa con los datos reales. Incluye: Winners, Errores NF, Errores Forzados, Aces, Dobles Faltas, Efectividad Smash, Volea, Resto, Break points]
+
+## 🏟️ MAPA DE TIROS Y ZONAS
+[Analiza las zonas de tiros reales. Explica dónde se juegan más puntos según los datos de zonasTiros.]
+
+## 👤 ANÁLISIS INDIVIDUAL
+
+[Para CADA jugador, basándote ÚNICAMENTE en sus datos reales:]
+
+### 🏅 [NOMBRE] — Equipo [X] · [posición]
+
+#### Técnica (datos reales)
+- Golpes registrados: [exactamente lo que dice el JSON]
+- Efectividades reales: [los porcentajes exactos]
+
+#### Táctica
+- Tiempo en red: [dato real]% · Tiempo en fondo: [dato real]%
+- Patrones observados: [solo lo que dice fortalezasObservadas]
+
+#### Fortalezas observadas en el video
+[lista de fortalezasObservadas real]
+
+#### Debilidades detectadas
+[lista de debilidadesObservadas real]
+
+#### Nivel mental observado: [nivelMental]/10
+[Justifica basándote en lo observado]
+
+#### 🎯 Recomendaciones de mejora
+[Basadas en las debilidades reales observadas]
+
+---
+
+## ⚡ MOMENTOS CLAVE REALES
+[Lista cada momento de momentosClave con análisis]
+
+## 📅 PLAN DE ENTRENAMIENTO PERSONALIZADO (4 SEMANAS)
+[Basado en las debilidades reales observadas para cada jugador]
+
+### Semana 1: Técnica
+### Semana 2: Táctica
+### Semana 3: Físico y Mental
+### Semana 4: Integración
+
+---
+${data.confianza === "baja" ? "\n⚠️ **Nota de confianza:** " + data.notasDelAnalista + "\n" : ""}
+*Análisis generado por DeporteVision AI · Datos extraídos por visión artificial del video real · ${new Date().toLocaleDateString("es-AR")}*`;
+}
+
+// ─── Llamada VLM con el video real ────────────────────────────────────────────
+
+async function analyzeVideoReal(
+  zai: InstanceType<typeof ZAI>,
+  videoUrl: string,
+  playerNames: string[]
+): Promise<RealMatchData> {
+  console.log("[PadelAI] VLM analizando video real:", videoUrl.slice(0, 70) + "...");
+
+  const prompt = buildVLMPrompt(playerNames);
 
   const response = await zai.chat.completions.createVision({
     messages: [
@@ -349,16 +386,39 @@ async function analyzeVideoWithVLM(zai: InstanceType<typeof ZAI>, videoUrl: stri
     thinking: { type: "disabled" },
   });
 
-  const content = response.choices[0]?.message?.content ?? "";
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("VLM no devolvió JSON válido");
-  return JSON.parse(jsonMatch[0]) as VideoAnalysisData;
+  const raw = response.choices[0]?.message?.content ?? "";
+  console.log("[PadelAI] VLM respondió, parseando JSON...");
+
+  // Extraer JSON de la respuesta
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(
+      `El VLM no devolvió JSON válido. Respuesta: ${raw.slice(0, 200)}`
+    );
+  }
+
+  const data = JSON.parse(jsonMatch[0]) as RealMatchData;
+
+  // Validar que los datos mínimos estén presentes
+  if (!data.jugadores || data.jugadores.length < 2) {
+    throw new Error("El VLM no pudo identificar a los jugadores en el video.");
+  }
+
+  console.log(
+    `[PadelAI] Datos reales extraídos. Confianza: ${data.confianza}. ` +
+    `Jugadores: ${data.jugadores.map(j => j.nombre).join(", ")}`
+  );
+
+  return data;
 }
 
 // ─── Generación del informe narrativo ────────────────────────────────────────
 
-async function generateNarrativeReport(zai: InstanceType<typeof ZAI>, data: VideoAnalysisData, playerNames: string[]): Promise<string> {
-  const prompt = buildReportPrompt(data, playerNames);
+async function generateNarrative(
+  zai: InstanceType<typeof ZAI>,
+  data: RealMatchData
+): Promise<string> {
+  const prompt = buildNarrativePrompt(data);
 
   const response = await zai.chat.completions.create({
     messages: [{ role: "user", content: prompt }],
@@ -368,44 +428,55 @@ async function generateNarrativeReport(zai: InstanceType<typeof ZAI>, data: Vide
   return response.choices[0]?.message?.content ?? "Informe no disponible.";
 }
 
-// ─── Mapeo de datos AI → tipos de la app ─────────────────────────────────────
+// ─── Mapeo RealMatchData → tipos de la app ───────────────────────────────────
 
-function mapToMatchAnalysis(data: VideoAnalysisData, matchId: string, aiReport: string): Omit<MatchAnalysis, "createdAt"> {
+function mapToMatchAnalysis(
+  data: RealMatchData,
+  matchId: string,
+  aiReport: string,
+  playerNames: string[]
+): Omit<MatchAnalysis, "createdAt"> {
+  const sets = (data.resultado.sets ?? []) as [number, number][];
+  const winner = data.resultado.ganador ?? 1;
+
   const result: MatchResult = {
-    sets: data.resultado.sets as [number, number][],
-    winner: data.resultado.ganador,
-    duration: data.resultado.duracion,
-    totalPoints: data.resultado.totalPuntos,
+    sets: sets.length > 0 ? sets : [[0, 0]],
+    winner: winner as 1 | 2,
+    duration: data.resultado.duracion ?? "N/A",
+    totalPoints: data.resultado.totalPuntos ?? 0,
   };
+
+  const e1 = data.equipos[0];
+  const e2 = data.equipos[1];
 
   const teamStats: [TeamStats, TeamStats] = [
     {
       teamNumber: 1,
-      totalPoints: data.equipos[0]?.totalPuntos ?? 0,
-      winners: data.equipos[0]?.winners ?? 0,
-      unforcedErrors: data.equipos[0]?.erroresNoForzados ?? 0,
-      forcedErrors: data.equipos[0]?.erroresForzados ?? 0,
-      aces: data.equipos[0]?.aces ?? 0,
-      doubleFaults: data.equipos[0]?.doblesFaltas ?? 0,
-      smashWinRate: data.equipos[0]?.efectividadSmash ?? 0,
-      volleyWinRate: data.equipos[0]?.efectividadVolea ?? 0,
-      returnWinRate: data.equipos[0]?.efectividadResto ?? 0,
-      breakPointsWon: data.equipos[0]?.breakPointsGanados ?? 0,
-      breakPointsTotal: data.equipos[0]?.breakPointsTotal ?? 0,
+      totalPoints: e1.totalPuntos,
+      winners: e1.winners,
+      unforcedErrors: e1.erroresNoForzados,
+      forcedErrors: e1.erroresForzados,
+      aces: e1.aces,
+      doubleFaults: e1.doblesFaltas,
+      smashWinRate: e1.efectividadSmash,
+      volleyWinRate: e1.efectividadVolea,
+      returnWinRate: e1.efectividadResto,
+      breakPointsWon: e1.breakPointsGanados,
+      breakPointsTotal: e1.breakPointsTotal,
     },
     {
       teamNumber: 2,
-      totalPoints: data.equipos[1]?.totalPuntos ?? 0,
-      winners: data.equipos[1]?.winners ?? 0,
-      unforcedErrors: data.equipos[1]?.erroresNoForzados ?? 0,
-      forcedErrors: data.equipos[1]?.erroresForzados ?? 0,
-      aces: data.equipos[1]?.aces ?? 0,
-      doubleFaults: data.equipos[1]?.doblesFaltas ?? 0,
-      smashWinRate: data.equipos[1]?.efectividadSmash ?? 0,
-      volleyWinRate: data.equipos[1]?.efectividadVolea ?? 0,
-      returnWinRate: data.equipos[1]?.efectividadResto ?? 0,
-      breakPointsWon: data.equipos[1]?.breakPointsGanados ?? 0,
-      breakPointsTotal: data.equipos[1]?.breakPointsTotal ?? 0,
+      totalPoints: e2.totalPuntos,
+      winners: e2.winners,
+      unforcedErrors: e2.erroresNoForzados,
+      forcedErrors: e2.erroresForzados,
+      aces: e2.aces,
+      doubleFaults: e2.doblesFaltas,
+      smashWinRate: e2.efectividadSmash,
+      volleyWinRate: e2.efectividadVolea,
+      returnWinRate: e2.efectividadResto,
+      breakPointsWon: e2.breakPointsGanados,
+      breakPointsTotal: e2.breakPointsTotal,
     },
   ];
 
@@ -417,84 +488,118 @@ function mapToMatchAnalysis(data: VideoAnalysisData, matchId: string, aiReport: 
     unforcedErrors: j.erroresNoForzados,
     forcedErrors: j.erroresForzados,
     smashSuccess: j.smashExitosos,
-    smashTotal: j.smashTotal,
+    smashTotal: j.smashObservados,
     volleySuccess: j.voleaExitosas,
-    volleyTotal: j.voleaTotal,
+    volleyTotal: j.voleaObservadas,
     bandejaSuccess: j.bandejaExitosas,
-    bandejaTotal: j.bandejaTotal,
+    bandejaTotal: j.bandejaObservadas,
     viboraSuccess: j.viboraExitosas,
-    viboraTotal: j.viboraTotal,
+    viboraTotal: j.viboraObservadas,
     globoSuccess: j.globoExitosos,
-    globoTotal: j.globoTotal,
+    globoTotal: j.globoObservados,
     dropShotSuccess: j.dropShotExitosos,
-    dropShotTotal: j.dropShotTotal,
+    dropShotTotal: j.dropShotObservados,
     serveSpeed: j.velocidadSaque,
     serveWinRate: j.efectividadSaque,
     returnWinRate: j.efectividadResto,
   }));
 
+  // Heatmap global — datos reales del VLM
   const shotHeatmap: ShotHeatmapPoint[] = data.zonasTiros.map((z) => ({
     zone: z.zona,
     x: z.x,
     y: z.y,
-    count: z.count,
+    count: z.conteoObservado,
     type: z.tipo,
   }));
 
-  // Heatmaps individuales por jugador basados en posición
+  // Heatmap individual — distribuido según posición real (derecha/revés) y tiempo en zona
   const playerHeatmaps: PlayerHeatmap[] = data.jugadores.map((j) => {
     const isDerecha = j.posicion === "derecha";
-    const isWinner = j.equipo === data.resultado.ganador;
+    const netPct = j.tiempoEnRed / 100;
+    const backPct = j.tiempoEnFondo / 100;
+
     const points: ShotHeatmapPoint[] = data.zonasTiros.map((z) => {
       const isRightZone = z.x < 50;
-      const favored = isDerecha ? isRightZone : !isRightZone;
+      const isNetZone = z.y < 45;
+      const isBackZone = z.y > 65;
+
+      // Peso según lado dominante del jugador
+      const sideFactor = isDerecha
+        ? isRightZone ? 1.6 : 0.4
+        : isRightZone ? 0.4 : 1.6;
+
+      // Peso según tiempo en cada zona
+      const depthFactor = isNetZone
+        ? 0.4 + netPct * 1.6
+        : isBackZone
+        ? 0.4 + backPct * 1.6
+        : 1.0;
+
+      // Conteo real de esa zona escalado al jugador
+      const rawCount = z.conteoObservado;
+      const adjustedCount = Math.max(0, Math.round(rawCount * sideFactor * depthFactor * 0.5));
+
+      // Tipo de tiro más frecuente en esa zona según datos reales
+      const totalW = j.winners;
+      const totalE = j.erroresNoForzados + j.erroresForzados;
+      const totalR = (j.smashObservados + j.voleaObservadas + j.bandejaObservadas + j.viboraObservadas) - totalW - totalE;
+      const total = totalW + totalE + Math.max(0, totalR) || 1;
+      const wPct = totalW / total;
+      const ePct = totalE / total;
+      const rand = Math.random();
+      const shotType: "winner" | "error" | "rally" =
+        rand < wPct ? "winner" : rand < wPct + ePct ? "error" : "rally";
+
       return {
         zone: z.zona,
-        x: z.x + (Math.random() * 4 - 2),
-        y: z.y + (Math.random() * 4 - 2),
-        count: favored ? Math.round(z.count * (0.6 + Math.random() * 0.6)) : Math.round(z.count * (0.1 + Math.random() * 0.3)),
-        type: isWinner
-          ? (Math.random() < 0.38 ? "winner" : Math.random() < 0.55 ? "error" : "rally")
-          : (Math.random() < 0.22 ? "winner" : Math.random() < 0.48 ? "error" : "rally"),
+        x: Math.max(5, Math.min(95, z.x + (Math.random() * 6 - 3))),
+        y: Math.max(5, Math.min(95, z.y + (Math.random() * 6 - 3))),
+        count: adjustedCount,
+        type: shotType,
       };
     });
+
     return { playerName: j.nombre, team: j.equipo, position: j.posicion, points };
   });
 
-  const possessionBySet: PossessionSet[] = data.posesionPorSet.map((p) => ({
+  const possessionBySet: PossessionSet[] = (data.posesionPorSet ?? []).map((p) => ({
     setNumber: p.set,
     team1: p.equipo1,
     team2: p.equipo2,
   }));
 
-  const clips: Clip[] = data.momentosClave.map((m, i) => ({
+  if (possessionBySet.length === 0) {
+    sets.forEach((_, i) => possessionBySet.push({ setNumber: i + 1, team1: 50, team2: 50 }));
+  }
+
+  const clips: Clip[] = (data.momentosClave ?? []).map((m, i) => ({
     id: `clip-${i + 1}`,
     title: m.descripcion,
-    startTime: m.tiempo,
-    endTime: m.tiempo + 15 + Math.floor(Math.random() * 10),
+    startTime: m.tiempoAproximado,
+    endTime: m.tiempoAproximado + 15,
     type: m.tipo,
   }));
 
   const keyMetrics: KeyMetric[] = [
-    { label: "Winners", value: `${teamStats[0].winners + teamStats[1].winners} totales`, team1Value: teamStats[0].winners, team2Value: teamStats[1].winners, higherIsBetter: true },
-    { label: "Errores no forzados", value: `${teamStats[0].unforcedErrors + teamStats[1].unforcedErrors} totales`, team1Value: teamStats[0].unforcedErrors, team2Value: teamStats[1].unforcedErrors, higherIsBetter: false },
-    { label: "Efectividad Smash", value: "Promedio", team1Value: teamStats[0].smashWinRate, team2Value: teamStats[1].smashWinRate, higherIsBetter: true },
-    { label: "Efectividad Volea", value: "Promedio", team1Value: teamStats[0].volleyWinRate, team2Value: teamStats[1].volleyWinRate, higherIsBetter: true },
-    { label: "Break points", value: "Convertidos", team1Value: teamStats[0].breakPointsWon, team2Value: teamStats[1].breakPointsWon, higherIsBetter: true },
-    { label: "Efectividad Resto", value: "Puntos ganados", team1Value: teamStats[0].returnWinRate, team2Value: teamStats[1].returnWinRate, higherIsBetter: true },
+    { label: "Winners", value: `${e1.winners + e2.winners} totales`, team1Value: e1.winners, team2Value: e2.winners, higherIsBetter: true },
+    { label: "Errores no forzados", value: `${e1.erroresNoForzados + e2.erroresNoForzados} totales`, team1Value: e1.erroresNoForzados, team2Value: e2.erroresNoForzados, higherIsBetter: false },
+    { label: "Efectividad Smash", value: "Promedio", team1Value: e1.efectividadSmash, team2Value: e2.efectividadSmash, higherIsBetter: true },
+    { label: "Efectividad Volea", value: "Promedio", team1Value: e1.efectividadVolea, team2Value: e2.efectividadVolea, higherIsBetter: true },
+    { label: "Break points", value: "Convertidos", team1Value: e1.breakPointsGanados, team2Value: e2.breakPointsGanados, higherIsBetter: true },
+    { label: "Efectividad Resto", value: "Puntos ganados", team1Value: e1.efectividadResto, team2Value: e2.efectividadResto, higherIsBetter: true },
   ];
 
-  const winnerTeam = data.resultado.ganador;
-  const wStats = teamStats[winnerTeam - 1];
-  const lStats = teamStats[winnerTeam === 1 ? 1 : 0];
-  const winnerPlayers = data.jugadores.filter((j) => j.equipo === winnerTeam).map((j) => j.nombre).join(" y ");
-  const loserPlayers = data.jugadores.filter((j) => j.equipo !== winnerTeam).map((j) => j.nombre).join(" y ");
-  const setsStr = data.resultado.sets.map((s) => `${s[0]}-${s[1]}`).join(", ");
+  const winnerNames = data.jugadores.filter(j => j.equipo === winner).map(j => j.nombre).join(" y ");
+  const loserNames = data.jugadores.filter(j => j.equipo !== winner).map(j => j.nombre).join(" y ");
+  const setsStr = sets.map(s => `${s[0]}-${s[1]}`).join(", ");
 
-  let aiSummary = `Victoria para ${winnerPlayers} por ${setsStr} en ${data.resultado.duracion}. `;
-  aiSummary += `El equipo ganador registró ${wStats.winners} winners contra ${lStats.winners} del rival. `;
-  if (wStats.smashWinRate > 65) aiSummary += `Destacó la efectividad en smash con ${wStats.smashWinRate}%. `;
-  aiSummary += `${loserPlayers} desaprovechó ${lStats.breakPointsTotal - lStats.breakPointsWon} de ${lStats.breakPointsTotal} oportunidades de break.`;
+  const aiSummary = data.resultado.marcadorVisible
+    ? `Victoria para ${winnerNames} por ${setsStr} en ${data.resultado.duracion}. ` +
+      `El equipo ganador registró ${data.equipos[winner - 1].winners} winners. ` +
+      `${loserNames} cometió ${data.equipos[winner === 1 ? 1 : 0].erroresNoForzados} errores no forzados. ` +
+      `Confianza del análisis: ${data.confianza}.`
+    : `Análisis completado. ${data.observacionGeneral} Confianza: ${data.confianza}. ${data.notasDelAnalista}`;
 
   return {
     id: `analysis-${Date.now()}`,
@@ -509,6 +614,7 @@ function mapToMatchAnalysis(data: VideoAnalysisData, matchId: string, aiReport: 
     clips,
     aiSummary,
     aiReport,
+    playerNames,
     keyMetrics,
   };
 }
@@ -518,31 +624,26 @@ function mapToMatchAnalysis(data: VideoAnalysisData, matchId: string, aiReport: 
 export async function analyzePadelWithAI(
   matchId: string,
   videoUrl: string,
-  playerNames: string[] = []
-): Promise<Omit<MatchAnalysis, "createdAt">> {
-  const zai = await ZAI.create();
-
-  let videoData: VideoAnalysisData;
-  const isYouTube = videoUrl.includes("youtube.com") || videoUrl.includes("youtu.be");
-  const hasPublicUrl = videoUrl.startsWith("http");
-
-  if (hasPublicUrl) {
-    try {
-      console.log(`[PadelAI] Analizando video con VLM: ${videoUrl.slice(0, 60)}...`);
-      videoData = await analyzeVideoWithVLM(zai, videoUrl, playerNames);
-      console.log("[PadelAI] VLM completado ✓");
-    } catch (err) {
-      console.warn("[PadelAI] VLM falló, usando análisis LLM:", err instanceof Error ? err.message : err);
-      videoData = await generateAIOnlyAnalysis(zai, playerNames);
-    }
-  } else {
-    console.log("[PadelAI] Sin URL pública, usando análisis LLM...");
-    videoData = await generateAIOnlyAnalysis(zai, playerNames);
+  playerNames: string[]
+): Promise<{ analysis: Omit<MatchAnalysis, "createdAt">; rawData: RealMatchData }> {
+  if (!videoUrl || !videoUrl.startsWith("http")) {
+    throw new Error(
+      "Se requiere una URL pública del video (YouTube o Firebase Storage) para el análisis con IA."
+    );
   }
 
-  console.log("[PadelAI] Generando informe narrativo WPT-level...");
-  const aiReport = await generateNarrativeReport(zai, videoData, playerNames);
+  const zai = await ZAI.create();
+
+  // 1. VLM analiza el video real y extrae datos observados
+  const realData = await analyzeVideoReal(zai, videoUrl, playerNames);
+
+  // 2. LLM genera el informe narrativo basado en datos reales
+  console.log("[PadelAI] Generando informe narrativo con datos reales...");
+  const aiReport = await generateNarrative(zai, realData);
   console.log("[PadelAI] Informe generado ✓");
 
-  return mapToMatchAnalysis(videoData, matchId, aiReport);
+  // 3. Mapear a los tipos de la app
+  const analysis = mapToMatchAnalysis(realData, matchId, aiReport, playerNames);
+
+  return { analysis, rawData: realData };
 }

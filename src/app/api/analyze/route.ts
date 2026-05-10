@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { analyzePadelWithAI } from "@/lib/padel-ai";
-import { generatePadelAnalysis } from "@/lib/padel-analysis";
 
 // ─── Firebase server-side init ────────────────────────────────────────────────
 
@@ -72,16 +71,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Análisis con IA real ───────────────────────────────────────────────
-    let analysis: Omit<ReturnType<typeof generatePadelAnalysis>, never>;
-
-    try {
-      analysis = await analyzePadelWithAI(matchId, videoUrl, playerNames);
-      console.log("[API/analyze] Análisis IA completado ✓");
-    } catch (aiError) {
-      console.warn("[API/analyze] Error en IA, usando fallback aleatorio:", aiError instanceof Error ? aiError.message : aiError);
-      // Fallback: análisis aleatorio si la IA falla
-      analysis = generatePadelAnalysis(matchId);
-    }
+    const { analysis } = await analyzePadelWithAI(matchId, videoUrl, playerNames);
+    console.log("[API/analyze] Análisis IA completado ✓");
 
     const analysisId = analysis.id ?? `analysis-${Date.now()}`;
 
