@@ -106,6 +106,9 @@ function analysisToFirestore(analysis: MatchAnalysis): Record<string, unknown> {
     aiReport: analysis.aiReport ?? "",
     playerNames: analysis.playerNames ?? [],
     keyMetrics: analysis.keyMetrics,
+    confianza: analysis.confianza ?? "baja",
+    observacionGeneral: analysis.observacionGeneral ?? "",
+    notasDelAnalista: analysis.notasDelAnalista ?? "",
   });
 
   return {

@@ -28,7 +28,6 @@ import {
 } from "lucide-react";
 import { getMatchById, getMatchAnalysis, updateMatchStatus, getCachedAnalysis, getCachedMatch, cacheAnalysisLocally } from "@/lib/firestore";
 import { isFirebaseConfigured } from "@/lib/firebase";
-import { generatePadelAnalysis } from "@/lib/padel-analysis";
 import ReactMarkdown from "react-markdown";
 import type { Match, MatchAnalysis, MatchStatus, PlayerHeatmap, ShotHeatmapPoint } from "@/types";
 
@@ -381,21 +380,9 @@ export default function MatchAnalysisPage() {
           }
         }
 
-        // 5. Si todavía no hay análisis, generar uno nuevo
-        if (!analysisData && (matchData.status === "analyzed" || matchData.status === "processing" || matchData.status === "uploaded")) {
-          console.log("[Match] Generando análisis local...");
-          analysisData = generatePadelAnalysis(matchId);
-          cacheAnalysisLocally(matchId, analysisData);
-          setMatch({ ...matchData, status: "analyzed" });
-
-          // Intentar actualizar estado en Firestore
-          if (isFirebaseConfigured) {
-            try {
-              await updateMatchStatus(matchId, "analyzed");
-            } catch {
-              console.warn("[Match] No se pudo actualizar estado en Firestore");
-            }
-          }
+        // 5. Si no hay análisis, no generar datos falsos — mostrar estado real
+        if (!analysisData) {
+          console.log("[Match] Sin análisis disponible para:", matchId);
         }
 
         if (analysisData) {
@@ -438,10 +425,8 @@ export default function MatchAnalysisPage() {
               if (analysisData) {
                 setAnalysis(analysisData);
               } else {
-                // Firestore dice analyzed pero no hay datos -> generar localmente
-                const localAnalysis = generatePadelAnalysis(matchId);
-                cacheAnalysisLocally(matchId, localAnalysis);
-                setAnalysis(localAnalysis);
+                const cached = getCachedAnalysis(matchId);
+                if (cached) setAnalysis(cached);
               }
             }
           }
@@ -488,20 +473,11 @@ export default function MatchAnalysisPage() {
         return;
       }
     } catch (error) {
-      console.warn("API falló, generando análisis local:", error);
-    }
-
-    // Fallback: análisis local
-    try {
-      const localAnalysis = generatePadelAnalysis(matchId);
-      cacheAnalysisLocally(matchId, localAnalysis);
-      setAnalysis(localAnalysis);
+      console.error("Error en análisis IA:", error);
       if (isFirebaseConfigured) {
-        await updateMatchStatus(matchId, "analyzed").catch(() => {});
+        await updateMatchStatus(matchId, "error", error instanceof Error ? error.message : "Error IA").catch(() => {});
       }
-      if (match) setMatch({ ...match, status: "analyzed" });
-    } catch (innerError) {
-      console.error("Error generando análisis local:", innerError);
+      if (match) setMatch({ ...match, status: "error" });
     } finally {
       setProcessing(false);
     }
@@ -681,6 +657,39 @@ export default function MatchAnalysisPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Transparencia: qué observó la IA */}
+        {(analysis.confianza || analysis.observacionGeneral) && (
+          <Card className={`border ${
+            analysis.confianza === "alta" ? "border-green-500/30 bg-green-500/5" :
+            analysis.confianza === "media" ? "border-yellow-500/30 bg-yellow-500/5" :
+            "border-red-500/30 bg-red-500/5"
+          }`}>
+            <CardContent className="py-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge className={
+                  analysis.confianza === "alta" ? "bg-green-500/15 text-green-400 border-green-500/30" :
+                  analysis.confianza === "media" ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" :
+                  "bg-red-500/15 text-red-400 border-red-500/30"
+                }>
+                  {analysis.confianza === "alta" ? "✓ Confianza alta" :
+                   analysis.confianza === "media" ? "⚠ Confianza media" :
+                   "⚠ Confianza baja"}
+                </Badge>
+                <span className="text-xs text-muted-foreground">— Datos extraídos directamente del video por la IA</span>
+              </div>
+              {analysis.observacionGeneral && (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  <span className="font-medium text-foreground">Lo que vio la IA: </span>
+                  {analysis.observacionGeneral}
+                </p>
+              )}
+              {analysis.notasDelAnalista && analysis.confianza !== "alta" && (
+                <p className="text-xs text-muted-foreground italic">{analysis.notasDelAnalista}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Resumen IA */}
         <Card className="bg-card border-primary/10">

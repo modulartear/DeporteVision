@@ -67,6 +67,11 @@ export interface MatchAnalysis {
 
   // Métricas clave
   keyMetrics: KeyMetric[];
+
+  // Transparencia: qué observó realmente el VLM
+  confianza?: "alta" | "media" | "baja";
+  observacionGeneral?: string;
+  notasDelAnalista?: string;
 }
 
 export interface MatchResult {

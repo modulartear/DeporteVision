@@ -616,6 +616,9 @@ function mapToMatchAnalysis(
     aiReport,
     playerNames,
     keyMetrics,
+    confianza: data.confianza,
+    observacionGeneral: data.observacionGeneral,
+    notasDelAnalista: data.notasDelAnalista,
   };
 }
 
