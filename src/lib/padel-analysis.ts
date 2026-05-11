@@ -344,9 +344,9 @@ function generateAISummary(
   team2Stats: TeamStats,
   playerNames: string[]
 ): string {
-  const winnerTeam = result.winner;
-  const winnerStats = winnerTeam === 1 ? team1Stats : team2Stats;
-  const loserStats = winnerTeam === 1 ? team2Stats : team1Stats;
+  const winnerTeam = result?.winner || 1;
+  const winnerStats = (winnerTeam === 1 || !winnerTeam) ? team1Stats : team2Stats;
+  const loserStats = (winnerTeam === 1 || !winnerTeam) ? team2Stats : team1Stats;
   const setsStr = result.sets.map((s) => `${s[0]}-${s[1]}`).join(", ");
 
   const winnerNames = winnerTeam === 1
@@ -383,26 +383,27 @@ function generateAISummary(
 
 // ─── Función principal: generar análisis completo ───────────────────────
 export function generatePadelAnalysis(matchId: string): MatchAnalysis {
-  const result = generateResult();
-  const team1Stats = generateTeamStats(1, result.winner === 1);
-  const team2Stats = generateTeamStats(2, result.winner === 2);
+  const result = generateResult() || { winner: 1, sets: [[6, 4]], points: [] };
+  const winner = result?.winner || 1;
+  const team1Stats = generateTeamStats(1, winner === 1);
+  const team2Stats = generateTeamStats(2, winner === 2);
 
   const playerNames = [randomName(), randomName(), randomName(), randomName()];
   const playerStats: PlayerStats[] = [
-    generatePlayerStats(playerNames[0], 1, "derecha", result.winner === 1),
-    generatePlayerStats(playerNames[1], 1, "revés", result.winner === 1),
-    generatePlayerStats(playerNames[2], 2, "derecha", result.winner === 2),
-    generatePlayerStats(playerNames[3], 2, "revés", result.winner === 2),
+    generatePlayerStats(playerNames[0], 1, "derecha", winner === 1),
+    generatePlayerStats(playerNames[1], 1, "revés", winner === 1),
+    generatePlayerStats(playerNames[2], 2, "derecha", winner === 2),
+    generatePlayerStats(playerNames[3], 2, "revés", winner === 2),
   ];
 
   const heatmap = generateShotHeatmap();
   const playerHeatmaps: PlayerHeatmap[] = [
-    generatePlayerHeatmap(playerNames[0], 1, "derecha", result.winner === 1),
-    generatePlayerHeatmap(playerNames[1], 1, "revés", result.winner === 1),
-    generatePlayerHeatmap(playerNames[2], 2, "derecha", result.winner === 2),
-    generatePlayerHeatmap(playerNames[3], 2, "revés", result.winner === 2),
+    generatePlayerHeatmap(playerNames[0], 1, "derecha", winner === 1),
+    generatePlayerHeatmap(playerNames[1], 1, "revés", winner === 1),
+    generatePlayerHeatmap(playerNames[2], 2, "derecha", winner === 2),
+    generatePlayerHeatmap(playerNames[3], 2, "revés", winner === 2),
   ];
-  const possession = generatePossessionBySet(result.sets.length, result.winner);
+  const possession = generatePossessionBySet(result.sets.length, winner);
   const pointSequence = generatePointSequence(result.sets);
   const clips = generateClips();
   const keyMetrics = generateKeyMetrics(team1Stats, team2Stats);
