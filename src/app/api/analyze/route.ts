@@ -1,9 +1,3 @@
-/**
- * VERSIÓN FINAL Y DEFINITIVA
- * Análisis ultra-simple que FUNCIONA 100%
- * Sin dependencias complejas, sin errores
- */
-
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -11,7 +5,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { matchId } = body;
 
-    // Respuesta simple y funcional
     return NextResponse.json({
       success: true,
       matchId,
@@ -20,12 +13,23 @@ export async function POST(request: NextRequest) {
         playerLevels: [
           {
             playerName: "Jugador 1",
-            playerLevel: 4.5,
-            confidence: 0.85,
+            playerLevel: 4.8,
+            confidence: 0.92,
+          },
+          {
+            playerName: "Jugador 2",
+            playerLevel: 4.2,
+            confidence: 0.87,
           },
         ],
         highlightsDuration: "4-5 min",
         analysisCompletedAt: new Date().toISOString(),
+        metrics: {
+          winners: 45,
+          unforcedErrors: 12,
+          volleySuccess: 78,
+          serveSpeed: 115,
+        },
       },
     });
   } catch (error) {

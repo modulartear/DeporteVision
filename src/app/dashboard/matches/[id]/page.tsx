@@ -76,12 +76,71 @@ export default function MatchPage() {
 
             {analysis && (
               <div className="space-y-4">
-                <div className="bg-green-500/10 p-4 rounded text-green-400">
+                {/* Success Message */}
+                <div className="bg-green-500/10 border border-green-500/50 p-4 rounded text-green-400">
                   ✅ Análisis completado
                 </div>
-                <p className="text-gray-300">
-                  Jugadores analizados: {analysis?.playersAnalyzed}
-                </p>
+
+                {/* Player Levels */}
+                {analysis?.playerLevels && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg">Niveles de Jugadores</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {analysis.playerLevels.map((level: any, i: number) => (
+                        <div key={i} className="bg-slate-800 p-4 rounded">
+                          <p className="text-sm text-gray-400">{level.playerName}</p>
+                          <p className="text-3xl font-bold text-green-400">
+                            {level.playerLevel?.toFixed(1)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Confianza: {(level.confidence * 100).toFixed(0)}%
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Metrics */}
+                {analysis?.metrics && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg">Métricas</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="bg-slate-800 p-3 rounded">
+                        <p className="text-gray-400">Winners</p>
+                        <p className="text-xl font-bold text-primary">
+                          {analysis.metrics.winners}
+                        </p>
+                      </div>
+                      <div className="bg-slate-800 p-3 rounded">
+                        <p className="text-gray-400">Errores</p>
+                        <p className="text-xl font-bold text-red-400">
+                          {analysis.metrics.unforcedErrors}
+                        </p>
+                      </div>
+                      <div className="bg-slate-800 p-3 rounded">
+                        <p className="text-gray-400">Volea (%)</p>
+                        <p className="text-xl font-bold text-blue-400">
+                          {analysis.metrics.volleySuccess}%
+                        </p>
+                      </div>
+                      <div className="bg-slate-800 p-3 rounded">
+                        <p className="text-gray-400">Servicio (km/h)</p>
+                        <p className="text-xl font-bold text-yellow-400">
+                          {analysis.metrics.serveSpeed}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Duration */}
+                {analysis?.highlightsDuration && (
+                  <div className="bg-slate-800 p-4 rounded">
+                    <p className="text-sm text-gray-400">Duración de Highlights</p>
+                    <p className="text-lg font-semibold">{analysis.highlightsDuration}</p>
+                  </div>
+                )}
               </div>
             )}
 
